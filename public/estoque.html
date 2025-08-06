@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="imagens/Icon.png" type="image/png">
+    <title>Gerenciar Estoque - Doce Veneno Modas</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <img src="imagens/Logo Site 3.png" alt="Logo Doce Veneno Modas" id="logoSite">
+        <button id="logoutBtn" style="display: none; margin-left: 10px;">Sair</button>
+    </header>
+    <div class="container">
+        <h1>Gerenciar Estoque</h1>
+
+         <nav class="main-nav">
+            <a href="index.html" class="nav-link">Painel Principal</a>
+            <a href="estoque.html" class="nav-link active">Gerenciar Estoque</a>
+            <a href="vendas.html" class="nav-link">Histórico de Vendas</a>
+        </nav>
+
+        <section id="entrada-dados">
+            <h2>Adicionar Nova Peça ao Estoque</h2>
+            <form id="formNovaPeca">
+                <div class="form-grid">
+                    <div>
+                        <label for="nomePeca">Nome da Peça:</label>
+                        <input type="text" id="nomePeca" required>
+                    </div>
+                    <div>
+                        <label for="quantidade">Quantidade:</label>
+                        <input type="number" id="quantidade" min="1" value="1" required>
+                    </div>
+                    <div>
+                        <label for="precoCompra">Preço de Compra (R$):</label>
+                        <input type="number" id="precoCompra" step="0.01" min="0" required>
+                    </div>
+                    <div>
+                        <label for="precoVenda">Preço de Venda (R$):</label>
+                        <input type="number" id="precoVenda" step="0.01" min="0" required>
+                    </div>
+                    <div>
+                        <label for="corPeca">Cor da Peça:</label>
+                        <input type="text" id="corPeca">
+                    </div>
+                    <div>
+                        <label for="tamanhoPeca">Tam.:</label>
+                        <input type="text" id="tamanhoPeca" placeholder="P, M, G, 38, etc.">
+                    </div>
+                    <div>
+                        <label>Data da Compra (Ano Fixo: 2025):</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="number" id="diaCompra" placeholder="DD" min="1" max="31" style="width: 60px;" required>
+                            <input type="number" id="mesCompra" placeholder="MM" min="1" max="12" style="width: 60px;" required>
+                        </div>
+                    </div>
+                </div>
+                <button type="submit">Adicionar Peça</button>
+            </form>
+        </section>
+
+        <div class="actions-bar">
+            <button id="btnVenderSelecionados">Vender Selecionados</button>
+            <button id="btnDeletarSelecionados">Deletar Selecionados</button>
+        </div>
+
+        <!-- Barra de Pesquisa Adicionada -->
+        <div class="search-container" style="margin-top: 20px; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+            <label for="searchInputEstoque" style="font-weight: bold;">Pesquisar no Estoque:</label>
+            <input type="text" id="searchInputEstoque" placeholder="Digite o nome da peça..." style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; flex-grow: 1; max-width: 400px;">
+        </div>
+
+        <section id="lista-pecas-estoque">
+            <h2>Peças em Estoque</h2>
+            <div class="table-responsive"> <!-- Adicionado wrapper para responsividade -->
+                <table id="tabelaEstoque">
+                    <thead>
+                        <tr>
+                            <th class="th-checkbox"><input type="checkbox" id="selectAllCheckbox" title="Selecionar Todos"></th>
+                            <th>Nome</th>
+                            <th>Cor</th>
+                            <th>Tam.</th>
+                            <th>Qtd.</th>
+                            <th>Data Compra</th>
+                            <th>Preço Compra</th>
+                            <th>Preço Venda</th>
+                            <th>Lucro Pot.</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Peças em estoque serão inseridas aqui -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="resumo-estoque">
+            <h2>Resumo do Estoque</h2>
+            <div class="summary">
+                <p>Total Investido em Estoque: <span id="totalInvestidoEstoque" class="currency">0,00</span></p>
+                <p>Lucro Potencial em Estoque: <span id="lucroPotencialEstoque" class="currency">0,00</span></p>
+                <p>Quantidade de Peças em Estoque: <span id="qtdPecasEstoque">0</span></p>
+            </div>
+        </section>
+    </div>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/common.js"></script>
+    <script src="js/estoque_script.js"></script>
+</body>
+<div id="confirmActionModal" class="modal">
+    <div class="modal-content">
+        <h3 id="modalTitle">Confirmar Ação</h3>
+        <p id="modalMessage">Você tem certeza que deseja realizar esta ação?</p>
+
+        <div id="modalEditForm" style="display: none; text-align: left; margin-top: 15px;">
+            <input type="hidden" id="editPecaId">
+            <div>
+                <label for="editNomePeca">Nome da Peça:</label>
+                <input type="text" id="editNomePeca" required>
+            </div>
+            <div>
+                <label for="editCorPeca">Cor da Peça:</label>
+                <input type="text" id="editCorPeca" placeholder="Ex: Preto, Branco, Azul">
+            </div>
+            <div>
+                <label for="editTamanhoPeca">Tam.:</label>
+                <input type="text" id="editTamanhoPeca" placeholder="P, M, G, 38, etc.">
+            </div>
+            <div>
+                <label for="editQuantidade">Quantidade:</label>
+                <input type="number" id="editQuantidade" min="1" required>
+            </div>
+            <div>
+                <label>Data da Compra (Ano Fixo: 2025):</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="number" id="editDiaCompra" placeholder="DD" min="1" max="31" style="width: 60px;" required>
+                    <input type="number" id="editMesCompra" placeholder="MM" min="1" max="12" style="width: 60px;" required>
+                </div>
+            </div>
+            <div>
+                <label for="editPrecoCompra">Preço de Compra (R$):</label>
+                <input type="number" id="editPrecoCompra" step="0.01" min="0" required>
+            </div>
+            <div>
+                <label for="editPrecoVenda">Preço de Venda (R$):</label>
+                <input type="number" id="editPrecoVenda" step="0.01" min="0" required>
+            </div>
+        </div>
+
+        <form id="modalSellForm" style="display: none; padding: 10px; text-align: left; margin-top: 15px;">
+            <p style="margin-bottom: 10px;">Peça: <strong id="sellPecaNome"></strong></p>
+            <p style="margin-bottom: 10px;">Cor: <strong id="sellPecaCor"></strong></p>
+            <p style="margin-bottom: 10px;">Em estoque: <span id="sellPecaEstoqueAtual"></span> unidades</p>
+            <input type="hidden" id="sellPecaId">
+            <div style="margin-bottom: 15px;">
+                <label for="sellQuantidade" style="display: block; margin-bottom: 5px;">Quantidade a Vender:</label>
+                <input type="number" id="sellQuantidade" name="sellQuantidade" min="1" required style="width: 100%; padding: 8px; box-sizing: border-box;">
+                <span id="sellQuantityError" style="color: var(--loss-color); font-size: 0.9em; display: block; margin-top: 5px;"></span>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label for="sellDesconto" style="display: block; margin-bottom: 5px;">Desconto (%):</label>
+                <input type="number" id="sellDesconto" name="sellDesconto" min="0" max="100" value="0" placeholder="0-100" style="width: 100%; padding: 8px; box-sizing: border-box;">
+            </div>
+            <div class="sell-summary" style="background-color: var(--background-alt-color); padding: 10px; border-radius: 4px;">
+                <p style="margin: 5px 0;">Preço Final por Unidade: <strong id="sellPrecoFinal" class="currency">0,00</strong></p>
+                <p style="margin: 5px 0;">Total da Venda: <strong id="sellTotalVenda" class="currency">0,00</strong></p>
+            </div>
+        </form>
+
+        <div class="modal-buttons">
+            <button id="btnConfirmModal">Confirmar</button>
+            <button id="btnCancelModal" class="btn-delete">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+</html>
