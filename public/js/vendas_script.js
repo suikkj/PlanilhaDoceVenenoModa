@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             .forEach(peca => {
             const tr = tabelaVendasBody.insertRow();
             // CORREÇÃO: Usar os nomes de coluna do Supabase (snake_case)
-            const lucroDaVenda = (peca.preco_venda * peca.quantidade) - peca.preco_comprado_unitario;
+            const lucroDaVenda = (peca.preco_venda * peca.quantidade) - (peca.preco_comprado_unitario * peca.quantidade);
 
             tr.insertCell().textContent = peca.nome;
             tr.insertCell().textContent = peca.cor || '-';
@@ -56,7 +56,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const precoVendaTd = tr.insertCell();
             // CORREÇÃO:
-            precoVendaTd.textContent = formatarMoeda(peca.preco_venda * peca.quantidade);
+            const precoVendaTotal = peca.preco_venda * peca.quantidade;
+            precoVendaTd.textContent = formatarMoeda(precoVendaTotal);
             precoVendaTd.classList.add('currency');
 
             const lucroVendaTd = tr.insertCell();

@@ -174,21 +174,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             showNotificationModal('Erro de Validação', 'Por favor, insira um dia e mês válidos para a data da compra.');
             return;
         }
-        const dataCompraFormatada = `${String(mesCompra).padStart(2, '0')}-${String(diaCompra).padStart(2, '0')}`;
+        const anoAtual = new Date().getFullYear();
+        const dataCompraFormatada = `${anoAtual}-${String(mesCompra).padStart(2, '0')}-${String(diaCompra).padStart(2, '0')}`;
 
         const novaPeca = {
-            id: Date.now(),
-            nome: nomePeca,
-            quantidade: quantidade,
-            precoCompraUnitario: precoCompraUnitario,
-            compra: precoCompraUnitario * quantidade,
-            venda: precoVenda,
-            cor: corPeca,
-            tamanho: tamanhoPeca, // Adicionar tamanho ao objeto
-            dataCompra: dataCompraFormatada,
-            status: 'estoque', // Nova peça sempre começa em estoque
-            dataVenda: null
-        };
+        id: Date.now(),
+        nome: nomePeca,
+        quantidade: quantidade,
+        preco_comprado_unitario: precoCompraUnitario,
+        preco_venda: precoVenda,
+        cor: corPeca,
+        tamanho: tamanhoPeca,
+        data_compra: dataCompraFormatada,
+        status: 'estoque',
+        data_venda: null
+};
 
         const pecaSalva = await addPecaAPI(novaPeca); // Chama a função API
         if (pecaSalva) { // Verifica se a operação foi bem-sucedida
@@ -255,8 +255,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         let operacaoBemSucedida = false;
 
-        const precoVendaOriginal = parseFloat(pecaOriginal.venda);
-        const precoCompraUnitario = parseFloat(pecaOriginal.precoCompraUnitario);
+        const precoVendaOriginal = parseFloat(pecaOriginal.preco_venda); // CORRETO!
+        const precoCompraUnitario = parseFloat(pecaOriginal.preco_comprado_unitario); // CORRETO!
         const precoVendaFinalUnitario = precoVendaOriginal * (1 - (descontoAplicado / 100));
         const lucroPorPeca = precoVendaFinalUnitario - precoCompraUnitario;
 
@@ -273,16 +273,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 id: Date.now(),
                 nome: pecaOriginal.nome,
                 cor: pecaOriginal.cor,
-                tamanho: pecaOriginal.tamanho, // Adicionar tamanho
+                tamanho: pecaOriginal.tamanho,
                 quantidade: quantidadeVendida,
-                precoCompraUnitario: pecaOriginal.precoCompraUnitario,
-                compra: pecaOriginal.precoCompraUnitario * quantidadeVendida, // Custo das peças vendidas
-                venda: precoVendaFinalUnitario,
-                lucro: lucroTotalVenda, // Salva o lucro TOTAL da venda
-                desconto: descontoAplicado,
-                dataCompra: pecaOriginal.dataCompra,
+                preco_comprado_unitario: pecaOriginal.preco_comprado_unitario,
+                preco_venda: precoVendaFinalUnitario,
+                data_compra: pecaOriginal.data_compra,
                 status: 'vendida',
-                dataVenda: getDataAtualMMDD(),
+                data_venda: getDataAtualYYYYMMDD(),
+                desconto: descontoAplicado,
+                lucro: lucroTotalVenda
             };
 
             const updateResult = await updatePecaAPI(pecaOriginal.id, pecaOriginalAtualizada);
@@ -303,9 +302,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const lucroTotalVenda = lucroPorPeca * pecaOriginal.quantidade;
             const updates = {
                 status: 'vendida',
-                dataVenda: getDataAtualMMDD(),
-                venda: precoVendaFinalUnitario, // Atualiza o preço de venda para o valor com desconto
-                lucro: lucroTotalVenda, // Adiciona o campo de lucro
+                data_venda: getDataAtualYYYYMMDD(), // Use o formato correto!
+                preco_venda: precoVendaFinalUnitario,
+                lucro: lucroTotalVenda,
                 desconto: descontoAplicado
             };
             const resultadoUpdate = await updatePecaAPI(pecaOriginal.id, updates);
@@ -343,22 +342,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         showEditModal('Editar Peça', pecaParaEditar, async (dadosEditados) => {
-            // Validação dos dados editados (similar à de adicionar nova peça)
-            if (!dadosEditados.nome || isNaN(dadosEditados.precoCompraUnitario) || isNaN(dadosEditados.venda) || isNaN(dadosEditados.quantidade)) {
+            // Validação dos dados editados
+            if (!dadosEditados.nome || isNaN(dadosEditados.preco_comprado_unitario) || isNaN(dadosEditados.preco_venda) || isNaN(dadosEditados.quantidade)) {
                 showNotificationModal('Erro de Validação', 'Nome da Peça, Preço de Compra e Preço de Venda são obrigatórios.');
                 return;
             }
-            if (dadosEditados.precoCompraUnitario < 0 || dadosEditados.venda < 0 || dadosEditados.quantidade < 1) {
+            if (dadosEditados.preco_comprado_unitario < 0 || dadosEditados.preco_venda < 0 || dadosEditados.quantidade < 1) {
                 showNotificationModal('Erro de Validação', 'Os preços não podem ser negativos.');
                 return;
             }
 
-            // Recalcula o custo total antes de enviar para o backend
-            dadosEditados.compra = dadosEditados.precoCompraUnitario * dadosEditados.quantidade;
+            // Remove campos extras que não existem na tabela do Supabase
+            delete dadosEditados.compra;
+            delete dadosEditados._id;
 
-            const resultado = await updatePecaAPI(dadosEditados.id, dadosEditados); // Chama a função API
-            if (resultado) { // Verifica se a operação foi bem-sucedida
-                await inicializarPagina(); // Recarrega os dados e renderiza
+            // Garante que status e data_venda existam (se sua tabela exige)
+            if (!dadosEditados.status) dadosEditados.status = 'estoque';
+            if (!dadosEditados.data_venda) dadosEditados.data_venda = null;
+
+            const resultado = await updatePecaAPI(dadosEditados.id, dadosEditados);
+            if (resultado) {
+                await inicializarPagina();
                 showNotificationModal('Sucesso', `Peça "${dadosEditados.nome}" atualizada com sucesso!`);
             }
         });
@@ -435,4 +439,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     await inicializarPagina();
+
+    function getDataAtualYYYYMMDD() {
+        const hoje = new Date();
+        const ano = hoje.getFullYear();
+        const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+        const dia = String(hoje.getDate()).padStart(2, '0');
+        return `${ano}-${mes}-${dia}`;
+    }
 });

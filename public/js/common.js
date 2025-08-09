@@ -357,11 +357,11 @@ function showEditModal(title, peca, onSaveCallback, saveBtnText = 'Salvar', canc
     // Preenche os campos do formulário
     let diaCompraVal = '';
     let mesCompraVal = '';
-    if (peca.dataCompra && typeof peca.dataCompra === 'string' && peca.dataCompra.includes('-')) {
-        const partes = peca.dataCompra.split('-');
-        if (partes.length === 2) { // Formato MM-DD
-            mesCompraVal = partes[0];
-            diaCompraVal = partes[1];
+    if (peca.data_compra && typeof peca.data_compra === 'string' && peca.data_compra.includes('-')) {
+        const partes = peca.data_compra.split('-');
+        if (partes.length === 3) { // Formato YYYY-MM-DD
+            mesCompraVal = partes[1];
+            diaCompraVal = partes[2];
         }
     }
 
@@ -376,22 +376,24 @@ function showEditModal(title, peca, onSaveCallback, saveBtnText = 'Salvar', canc
     if (editDiaCompraInput) editDiaCompraInput.value = diaCompraVal;
     if (editMesCompraInput) editMesCompraInput.value = mesCompraVal;
 
-    elements.editForm.querySelector('#editPrecoCompra').value = peca.precoCompraUnitario !== undefined ? peca.precoCompraUnitario : peca.compra;
-    elements.editForm.querySelector('#editPrecoVenda').value = peca.venda;
+    elements.editForm.querySelector('#editPrecoCompra').value = 
+        peca.preco_comprado_unitario !== undefined ? peca.preco_comprado_unitario : peca.compra;
+    elements.editForm.querySelector('#editPrecoVenda').value = peca.preco_venda;
 
     elements.confirmBtn.textContent = saveBtnText;
     elements.confirmBtn.style.display = '';
     elements.confirmBtn.onclick = () => {
         // Coleta os dados do formulário de edição
+        const anoAtual = new Date().getFullYear();
         const dadosEditados = {
             id: parseInt(elements.editForm.querySelector('#editPecaId').value),
             nome: elements.editForm.querySelector('#editNomePeca').value.trim(),
             cor: elements.editForm.querySelector('#editCorPeca').value.trim(),
-            tamanho: elements.editForm.querySelector('#editTamanhoPeca').value.trim(), // Coletar tamanho
-            dataCompra: `${String(elements.editForm.querySelector('#editMesCompra').value).padStart(2, '0')}-${String(elements.editForm.querySelector('#editDiaCompra').value).padStart(2, '0')}`,
+            tamanho: elements.editForm.querySelector('#editTamanhoPeca').value.trim(),
+            data_compra: `${anoAtual}-${String(elements.editForm.querySelector('#editMesCompra').value).padStart(2, '0')}-${String(elements.editForm.querySelector('#editDiaCompra').value).padStart(2, '0')}`,
             quantidade: parseInt(elements.editForm.querySelector('#editQuantidade').value) || 1,
-            precoCompraUnitario: parseFloat(elements.editForm.querySelector('#editPrecoCompra').value),
-            venda: parseFloat(elements.editForm.querySelector('#editPrecoVenda').value),
+            preco_comprado_unitario: parseFloat(elements.editForm.querySelector('#editPrecoCompra').value),
+            preco_venda: parseFloat(elements.editForm.querySelector('#editPrecoVenda').value),
         };
         hideModal(); // Esconde o modal antes de chamar o callback
         if (onSaveCallback) onSaveCallback(dadosEditados);

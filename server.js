@@ -185,6 +185,10 @@ app.post('/api/pecas', authenticateToken, async (req, res) => {
         const novaPeca = req.body;
         novaPeca.id = novaPeca.id || Date.now(); // Garante um ID se não vier do cliente ou usa o do cliente
 
+        if (!novaPeca.nome || !novaPeca.preco_venda || !novaPeca.quantidade) {
+            return res.status(400).json({ message: 'Campos obrigatórios faltando.' });
+        }
+
         const { data, error } = await supabase
             .from('pecas')
             .insert([novaPeca])
@@ -196,15 +200,17 @@ app.post('/api/pecas', authenticateToken, async (req, res) => {
 
         res.status(201).json(data[0]);
     } catch (err) {
+        console.error('Erro detalhado ao adicionar peça:', err);
         res.status(500).json({ message: 'Erro ao adicionar peça', error: err.message });
     }
 });
 
 // Atualizar uma peça (ex: editar, marcar como vendida)
 app.put('/api/pecas/:pecaId', authenticateToken, async (req, res) => {
+    let updates; // Declare fora do try
     try {
         const pecaId = req.params.pecaId;
-        const updates = req.body;
+        updates = req.body;
         delete updates._id; // Não atualize o _id do MongoDB
 
         const { data, error } = await supabase
@@ -219,6 +225,7 @@ app.put('/api/pecas/:pecaId', authenticateToken, async (req, res) => {
 
         res.json(data[0]);
     } catch (err) {
+        console.error('Erro detalhado ao atualizar peça:', err, updates); // Agora updates está definido
         res.status(500).json({ message: 'Erro ao atualizar peça', error: err.message });
     }
 });
