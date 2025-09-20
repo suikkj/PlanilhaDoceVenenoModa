@@ -136,14 +136,31 @@ app.post('/api/auth/login', async (req, res) => {
             .single();
 
         if (fetchError) {
-            return res.status(400).json({ message: 'Credenciais inválidas.' });
+            // If the specific error is "user not found" (PGRST116), that's a normal 400.
+            if (fetchError.code === 'PGRST116') {
+                return res.status(400).json({ message: 'Credenciais inválidas.' });
             }
+            // For any other database error, it's a server-side problem.
+            console.error('Supabase login error:', fetchError);
+            return res.status(500).json({ message: 'Erro no servidor ao tentar autenticar.' });
+        }
+
+        // Fallback check, though Supabase's .single() should prevent this case.
+        if (!user) {
+            return res.status(400).json({ message: 'Credenciais inválidas.' });
+        }
 
         if (user.status !== 'active') {
              return res.status(403).json({ message: 'Sua conta ainda não foi ativada pelo administrador.' });
         }
 
-        const isMatch = await bcrypt.compare(password, user.password_hash); // CORRIGIDO
+        // Check if password hash exists to prevent bcrypt error on corrupt user data
+        if (!user.password_hash) {
+            console.error(`Login attempt for user ${email} failed: no password hash found in database.`);
+            return res.status(500).json({ message: 'Erro no servidor: conta de usuário inválida.' });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password_hash);
         if (!isMatch) {
             return res.status(400).json({ message: 'Credenciais inválidas.' });
         }
@@ -153,6 +170,7 @@ app.post('/api/auth/login', async (req, res) => {
 
         res.json({ accessToken });
     } catch (err) {
+        console.error('Erro inesperado ao fazer login:', err);
         res.status(500).json({ message: 'Erro ao fazer login', error: err.message });
     }
 });
