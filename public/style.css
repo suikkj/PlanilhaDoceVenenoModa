@@ -397,3 +397,149 @@ input[type="checkbox"]:checked::after {
     border-width: 0 3px 3px 0;
     transform: rotate(45deg);
 }
+
+
+/* Tag styles (Modal de Venda) */
+.tag-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tag {
+    background-color: #555;
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 15px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background-color 0.2s, border-color 0.2s;
+    font-size: 0.9em;
+}
+
+.tag:hover {
+    background-color: #666;
+}
+
+.tag.selected {
+    background-color: var(--button-bg-color);
+    border-color: var(--heading-color);
+    color: #fff;
+    font-weight: bold;
+}
+
+
+/* === NOVOS ESTILOS ADICIONADOS === */
+
+/* Estilos para o container de tags NO FORMULÁRIO de adicionar peça */
+.form-tag-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 8px;
+    background-color: var(--input-bg-color);
+    border: 1px solid var(--input-border-color);
+    border-radius: 6px;
+    min-height: 40px; /* Altura mínima para parecer um input */
+}
+
+/* Estilo para as tags DENTRO do formulário (reutiliza .tag) */
+.form-tag-container .tag {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background-color: var(--button-bg-color); /* Cor mais forte para destacar */
+    padding: 5px 10px;
+    border-radius: 6px; /* Menos arredondado que no modal */
+    font-size: 0.9em;
+    cursor: default; /* Não é clicável para selecionar */
+}
+
+/* Estilo para o botão 'x' de remover a tag */
+.form-tag-container .tag .remove-tag {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+    text-align: center;
+    background-color: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    border-radius: 50%;
+    font-weight: bold;
+    font-size: 0.8em;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.form-tag-container .tag .remove-tag:hover {
+    background-color: var(--loss-color); /* Vermelho no hover */
+}
+
+/* Estiliza os novos <select> do formulário para combinar com os inputs */
+#formNovaPeca select {
+    width: 100%;
+    padding: 12px;
+    margin-top: 8px;
+    background-color: var(--input-bg-color);
+    color: var(--input-text-color);
+    border: 1px solid var(--input-border-color);
+    border-radius: 6px;
+    box-sizing: border-box;
+    font-size: 1rem;
+    cursor: pointer;
+    /* Remove a aparência padrão */
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    /* Adiciona uma seta personalizada */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23b0b0b0' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 16px 16px;
+}
+
+#formNovaPeca select:focus {
+    border-color: var(--input-focus-border-color);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--input-focus-shadow-color);
+}
+
+/* === MELHORIAS ESTÉTICAS FORMULÁRIO (Baseado no Screenshot) === */
+
+/* 1. Centraliza o botão "Adicionar Peça" e o torna mais destacado */
+#formNovaPeca {
+    text-align: center; /* Alinha o botão (que está fora do grid) no centro */
+}
+
+#formNovaPeca .form-grid {
+    text-align: left; /* Mantém o conteúdo do grid (labels, inputs) alinhado à esquerda */
+}
+
+#formNovaPeca button[type="submit"] {
+    margin-top: 30px; /* Aumenta o espaço acima do botão */
+    padding: 14px 40px; /* Deixa o botão maior e mais fácil de clicar */
+    font-size: 1.05em; /* Aumenta levemente a fonte */
+}
+
+/* 2. Ajusta o grid para ter um espaçamento melhor */
+.form-grid {
+    /* (gap: row-gap column-gap) */
+    gap: 15px 25px; /* Aumenta o espaçamento entre colunas (de 20 para 25) */
+}
+
+/* 3. Melhora a aparência do container de tags (a caixa vazia) */
+.form-tag-container {
+    min-height: 48px; /* Aumenta a altura mínima para parecer um "depósito" de tags */
+    padding: 10px; /* Ajusta o padding interno */
+    box-sizing: border-box; /* Garante que o padding não estoure as dimensões */
+}
+
+/* 4. Adiciona um placeholder ao container de tags quando ele está vazio */
+.form-tag-container:empty::before {
+    content: "As tags aparecerão aqui...";
+    color: var(--label-color);
+    font-style: italic;
+    font-size: 0.9em;
+    opacity: 0.6;
+}

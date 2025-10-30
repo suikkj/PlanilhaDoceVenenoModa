@@ -15,11 +15,16 @@
     <div class="container">
         <h1>Painel Principal</h1>
 
+
         <nav class="main-nav">
             <a href="index.html" class="nav-link active">Painel Principal</a>
             <a href="estoque.html" class="nav-link">Gerenciar Estoque</a>
             <a href="vendas.html" class="nav-link">Histórico de Vendas</a>
         </nav>
+
+        <button id="download-excel-btn" class="export-button">
+    Baixar Relatório (Excel)
+        </button>
 
         <section id="resumo-financeiro">
             <h2>Resumo Financeiro Geral</h2>
@@ -71,5 +76,7 @@
     <script src="js/config.js"></script>
     <script src="js/common.js"></script>
     <script src="js/index_script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </body>
 </html>

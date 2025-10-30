@@ -423,37 +423,92 @@ function showSellQuantityModal(title, peca, onConfirmCallback, confirmBtnText = 
 
     // Preenche os campos do formulário de venda
     elements.sellForm.querySelector('#sellPecaNome').textContent = peca.nome;
-    elements.sellForm.querySelector('#sellPecaCor').textContent = peca.cor || '-';
     elements.sellForm.querySelector('#sellPecaEstoqueAtual').textContent = peca.quantidade;
     elements.sellForm.querySelector('#sellPecaId').value = peca.id;
     const quantidadeInput = elements.sellForm.querySelector('#sellQuantidade');
     const errorSpan = elements.sellForm.querySelector('#sellQuantityError');
     
-    quantidadeInput.value = 1; // Default para 1
-    quantidadeInput.max = peca.quantidade; // Define o máximo baseado no estoque
-    if (errorSpan) errorSpan.textContent = ''; // Limpa erros anteriores
+    quantidadeInput.value = 1;
+    quantidadeInput.max = peca.quantidade;
+    if (errorSpan) errorSpan.textContent = '';
+
+    // --- Nova lógica de Tags ---
+    const coresContainer = elements.sellForm.querySelector('#sellCoresContainer');
+    const tamanhosContainer = elements.sellForm.querySelector('#sellTamanhosContainer');
+    const corVendidaInput = elements.sellForm.querySelector('#sellCorVendida');
+    const tamanhoVendidoInput = elements.sellForm.querySelector('#sellTamanhoVendido');
+
+    // Limpa containers e inputs
+    coresContainer.innerHTML = '';
+    tamanhosContainer.innerHTML = '';
+    corVendidaInput.value = '';
+    tamanhoVendidoInput.value = '';
+
+    const createTags = (container, valuesString, hiddenInput) => {
+        const values = valuesString ? valuesString.split(',').map(s => s.trim()).filter(Boolean) : [];
+        if (values.length === 0) {
+            container.innerHTML = '<span>N/A</span>';
+            return;
+        }
+
+        values.forEach(value => {
+            const tag = document.createElement('span');
+            tag.className = 'tag';
+            tag.textContent = value;
+            tag.dataset.value = value;
+            tag.onclick = () => {
+                // Deseleciona outros tags no mesmo container
+                const parent = tag.parentNode;
+                parent.querySelectorAll('.tag.selected').forEach(t => t.classList.remove('selected'));
+                // Seleciona o tag clicado
+                tag.classList.add('selected');
+                hiddenInput.value = value;
+            };
+            container.appendChild(tag);
+        });
+
+        // Auto-seleciona se houver apenas uma opção
+        if (values.length === 1) {
+            container.querySelector('.tag').click();
+        }
+    };
+
+    createTags(coresContainer, peca.cor, corVendidaInput);
+    createTags(tamanhosContainer, peca.tamanho, tamanhoVendidoInput);
+    // --- Fim da lógica de Tags ---
 
     elements.confirmBtn.textContent = confirmBtnText;
     elements.confirmBtn.style.display = '';
     elements.confirmBtn.onclick = () => {
         const pecaId = parseInt(elements.sellForm.querySelector('#sellPecaId').value);
         const quantidadeVendida = parseInt(quantidadeInput.value);
+        const corVendida = corVendidaInput.value;
+        const tamanhoVendido = tamanhoVendidoInput.value;
 
-        if (errorSpan) errorSpan.textContent = ''; // Limpa erro
+        if (errorSpan) errorSpan.textContent = '';
 
         if (isNaN(quantidadeVendida) || quantidadeVendida < 1) {
             if (errorSpan) errorSpan.textContent = 'Quantidade deve ser ao menos 1.';
             quantidadeInput.focus();
-            return; // Não fecha modal, não chama callback
+            return;
         }
         if (quantidadeVendida > peca.quantidade) {
             if (errorSpan) errorSpan.textContent = `Máximo em estoque: ${peca.quantidade}.`;
             quantidadeInput.focus();
-            return; // Não fecha modal, não chama callback
+            return;
+        }
+        // Validação para as tags
+        if (coresContainer.querySelector('.tag') && !corVendida) {
+            showNotificationModal('Atenção', 'Por favor, selecione uma cor para vender.');
+            return;
+        }
+        if (tamanhosContainer.querySelector('.tag') && !tamanhoVendido) {
+            showNotificationModal('Atenção', 'Por favor, selecione um tamanho para vender.');
+            return;
         }
 
-        hideModal(); // Esconde o modal antes de chamar o callback
-        if (onConfirmCallback) onConfirmCallback(pecaId, quantidadeVendida);
+        hideModal();
+        if (onConfirmCallback) onConfirmCallback(pecaId, quantidadeVendida, corVendida, tamanhoVendido);
     };
 
     elements.cancelBtn.textContent = cancelBtnText;
@@ -556,3 +611,108 @@ function getMesDiaFromISODate(isoDateString) {
 
 // Nota: A função de adicionar nova peça está em estoque_script.js
 // A lógica de cálculo de lucro e total gasto é adaptada em cada script de página.
+
+// js/common.js (ADICIONE ESTE CÓDIGO NO FINAL DO ARQUIVO)
+
+/**
+ * Exporta os dados de peças (estoque e vendas) para um arquivo Excel com duas abas.
+ * @param {Array<object>} todasAsPecas - O array completo de peças carregado pela página.
+ */
+function exportarDadosParaExcel(todasAsPecas) {
+    // 1. Verifica se a biblioteca XLSX está carregada
+    if (typeof XLSX === 'undefined') {
+        showNotificationModal("Erro", "A biblioteca de exportação (XLSX) não foi carregada. Recarregue a página.");
+        console.error("Biblioteca XLSX não encontrada.");
+        return;
+    }
+    
+    // 2. Verifica se há dados
+    if (!todasAsPecas || todasAsPecas.length === 0) {
+        showNotificationModal("Aviso", "Não há dados para exportar. Adicione algumas peças primeiro.");
+        return;
+    }
+
+    try {
+        // 3. Separa os dados em "Estoque" e "Vendas"
+        const pecasEstoque = todasAsPecas.filter(p => p.status === 'estoque');
+        const pecasVendidas = todasAsPecas.filter(p => p.status === 'vendida');
+
+        // 4. Formata os dados do Estoque para a planilha
+        const dadosEstoqueFormatados = pecasEstoque.map(p => {
+            const custoTotal = (p.preco_comprado_unitario || 0) * (p.quantidade || 0);
+            const receitaPotencial = (p.preco_venda || 0) * (p.quantidade || 0);
+            const lucroPotencial = receitaPotencial - custoTotal;
+            
+            return {
+                "Nome": p.nome,
+                "Cor": p.cor || '-',
+                "Tamanho": p.tamanho || '-',
+                "Qtd.": p.quantidade,
+                "Data Compra": formatarData(p.data_compra), // Reusa sua função de formatar data
+                "Preço Compra (Unit)": p.preco_comprado_unitario,
+                "Preço Venda (Unit)": p.preco_venda,
+                "Custo Total (Estoque)": custoTotal,
+                "Valor Total (Estoque)": receitaPotencial,
+                "Lucro Potencial (Total)": lucroPotencial
+            };
+        });
+
+        // 5. Formata os dados de Vendas para a planilha
+        const dadosVendasFormatados = pecasVendidas
+            .sort((a, b) => new Date(b.data_venda) - new Date(a.data_venda)) // Ordena por mais recente
+            .map(p => {
+                const custoTotal = (p.preco_comprado_unitario || 0) * (p.quantidade || 0);
+                const receitaTotal = (p.preco_venda || 0) * (p.quantidade || 0);
+                // p.lucro já é o lucro total da venda (calculado em processarVenda)
+                const lucroFinal = p.lucro !== undefined ? p.lucro : (receitaTotal - custoTotal);
+                
+                return {
+                    "Nome": p.nome,
+                    "Cor": p.cor || '-',
+                    "Tamanho": p.tamanho || '-',
+                    "Qtd. Vendida": p.quantidade,
+                    "Data Venda": formatarData(p.data_venda),
+                    "Data Compra": formatarData(p.data_compra),
+                    "Preço Compra (Unit)": p.preco_comprado_unitario,
+                    "Preço Venda (Final Unit)": p.preco_venda, // Este já é o preço com desconto
+                    "Receita Total": receitaTotal,
+                    "Lucro (Total)": lucroFinal,
+                    "Desconto (%)": p.desconto || 0
+                };
+            });
+
+        // 6. Cria o "Workbook" (o arquivo Excel)
+        const wb = XLSX.utils.book_new();
+
+        // 7. Cria as planilhas (Worksheets) a partir dos dados formatados
+        const wsEstoque = XLSX.utils.json_to_sheet(dadosEstoqueFormatados);
+        const wsVendas = XLSX.utils.json_to_sheet(dadosVendasFormatados);
+
+        // 8. [Opcional] Ajusta a largura das colunas para auto-fit
+        const autoFitColumns = (ws) => {
+            const objectMaxLength = [];
+            const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+            data.forEach(row => {
+                (row || []).forEach((cell, colIndex) => {
+                    objectMaxLength[colIndex] = Math.max(objectMaxLength[colIndex] || 0, (cell || "").toString().length);
+                });
+            });
+            ws["!cols"] = objectMaxLength.map(w => ({ wch: w + 2 })); // Adiciona um padding
+        };
+        
+        autoFitColumns(wsEstoque);
+        autoFitColumns(wsVendas);
+
+        // 9. Adiciona as planilhas ao arquivo com nomes de abas
+        XLSX.utils.book_append_sheet(wb, wsEstoque, "Estoque");
+        XLSX.utils.book_append_sheet(wb, wsVendas, "Vendas");
+
+        // 10. Gera o nome do arquivo com a data atual e inicia o download
+        const dataAtual = new Date().toISOString().split('T')[0]; // Formato YYYY-MM-DD
+        XLSX.writeFile(wb, `Relatorio_DoceVeneno_${dataAtual}.xlsx`);
+
+    } catch (error) {
+        console.error("Erro ao gerar o relatório Excel:", error);
+        showNotificationModal("Erro Inesperado", `Não foi possível gerar o relatório: ${error.message}`);
+    }
+}

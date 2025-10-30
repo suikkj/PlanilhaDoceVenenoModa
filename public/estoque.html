@@ -15,11 +15,16 @@
     <div class="container">
         <h1>Gerenciar Estoque</h1>
 
+
          <nav class="main-nav">
             <a href="index.html" class="nav-link">Painel Principal</a>
             <a href="estoque.html" class="nav-link active">Gerenciar Estoque</a>
             <a href="vendas.html" class="nav-link">Histórico de Vendas</a>
         </nav>
+
+        <button id="download-excel-btn" class="export-button">
+    Baixar Relatório (Excel)
+        </button>
 
         <section id="entrada-dados">
             <h2>Adicionar Nova Peça ao Estoque</h2>
@@ -41,13 +46,47 @@
                         <label for="precoVenda">Preço de Venda (R$):</label>
                         <input type="number" id="precoVenda" step="0.01" min="0" required>
                     </div>
+
                     <div>
-                        <label for="corPeca">Cor da Peça:</label>
-                        <input type="text" id="corPeca">
+                        <label for="corPecaSelect">Cores (Selecione para adicionar):</label>
+                        <select id="corPecaSelect">
+                            <option value="">-- Adicionar cor --</option>
+                            <option value="Preto">Preto</option>
+                            <option value="Off">Off</option>
+                            <option value="Branco">Branco</option>
+                            <option value="Marrom">Marrom</option>
+                            <option value="Verde">Verde</option>
+                            <option value="Azul">Azul</option>
+                            <option value="Vermelho">Vermelho</option>
+                            <option value="Rosa">Rosa</option>
+                            <option value="Vinho">Vinho</option>
+                            <option value="Caramelo">Caramelo</option>
+                            <option value="Bege">Bege</option>
+                            <option value="Terracota">Terracota</option>
+                            <option value="Variada">Variada</option>
+                        </select>
+                        <div id="corPecaTagContainer" class="form-tag-container"></div>
+                        <input type="hidden" id="corPeca">
                     </div>
+                    
                     <div>
-                        <label for="tamanhoPeca">Tam.:</label>
-                        <input type="text" id="tamanhoPeca" placeholder="P, M, G, 38, etc.">
+                        <label for="tamanhoPecaSelect">Tamanhos (Selecione para adicionar):</label>
+                        <select id="tamanhoPecaSelect">
+                            <option value="">-- Adicionar tamanho --</option>
+                            <option value="PP">PP</option>
+                            <option value="P">P</option>
+                            <option value="M">M</option>
+                            <option value="G">G</option>
+                            <option value="GG">GG</option>
+                            <option value="U">Único (U)</option>
+                            <option value="36">36</option>
+                            <option value="38">38</option>
+                            <option value="40">40</option>
+                            <option value="42">42</option>
+                            <option value="44">44</option>
+                        </select>
+                        <div id="tamanhoPecaTagContainer" class="form-tag-container"></div>
+                        <input type="hidden" id="tamanhoPeca">
                     </div>
                     <div>
                         <label>Data da Compra (Ano Fixo: 2025):</label>
@@ -66,7 +105,6 @@
             <button id="btnDeletarSelecionados">Deletar Selecionados</button>
         </div>
 
-        <!-- Barra de Pesquisa Adicionada -->
         <div class="search-container" style="margin-top: 20px; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
             <label for="searchInputEstoque" style="font-weight: bold;">Pesquisar no Estoque:</label>
             <input type="text" id="searchInputEstoque" placeholder="Digite o nome da peça..." style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; flex-grow: 1; max-width: 400px;">
@@ -74,8 +112,7 @@
 
         <section id="lista-pecas-estoque">
             <h2>Peças em Estoque</h2>
-            <div class="table-responsive"> <!-- Adicionado wrapper para responsividade -->
-                <table id="tabelaEstoque">
+            <div class="table-responsive"> <table id="tabelaEstoque">
                     <thead>
                         <tr>
                             <th class="th-checkbox"><input type="checkbox" id="selectAllCheckbox" title="Selecionar Todos"></th>
@@ -91,8 +128,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <!-- Peças em estoque serão inseridas aqui -->
-                    </tbody>
+                        </tbody>
                 </table>
             </div>
         </section>
@@ -106,12 +142,15 @@
             </div>
         </section>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
     <script src="js/config.js"></script>
     <script src="js/common.js"></script>
     <script src="js/estoque_script.js"></script>
 </body>
+
 <div id="confirmActionModal" class="modal">
     <div class="modal-content">
         <h3 id="modalTitle">Confirmar Ação</h3>
@@ -154,7 +193,16 @@
 
         <form id="modalSellForm" style="display: none; padding: 10px; text-align: left; margin-top: 15px;">
             <p style="margin-bottom: 10px;">Peça: <strong id="sellPecaNome"></strong></p>
-            <p style="margin-bottom: 10px;">Cor: <strong id="sellPecaCor"></strong></p>
+                        <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">Cor Vendida:</label>
+                <div id="sellCoresContainer" class="tag-container"></div>
+                <input type="hidden" id="sellCorVendida">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">Tamanho Vendido:</label>
+                <div id="sellTamanhosContainer" class="tag-container"></div>
+                <input type="hidden" id="sellTamanhoVendido">
+            </div>
             <p style="margin-bottom: 10px;">Em estoque: <span id="sellPecaEstoqueAtual"></span> unidades</p>
             <input type="hidden" id="sellPecaId">
             <div style="margin-bottom: 15px;">

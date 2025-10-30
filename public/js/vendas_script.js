@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const totalArrecadadoVendasEl = document.getElementById('totalArrecadadoVendas');
     const lucroTotalComVendasEl = document.getElementById('lucroTotalComVendas');
     const qtdPecasVendidasEl = document.getElementById('qtdPecasVendidas');
+    const downloadBtn = document.getElementById('download-excel-btn');
 
     let todasAsPecas = [];
  
@@ -11,6 +12,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!isUserLoggedIn()) {
         window.location.href = 'login.html';
         return;
+    }
+
+    //Excel
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', () => {
+            // A variável 'todasAsPecas' já está disponível neste escopo
+            exportarDadosParaExcel(todasAsPecas);
+        });
     }
 
     function renderizarTabelaVendas() {

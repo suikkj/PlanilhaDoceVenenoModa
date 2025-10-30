@@ -15,6 +15,7 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY; // Use a chave de serviço no backend
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+
 const app = express();
 const port = process.env.PORT || 3000; // Porta para o backend rodar
 

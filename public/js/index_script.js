@@ -4,12 +4,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     const lucroTotalVendasEl = document.getElementById('lucroTotalVendas');
     const tabelaVendasRecentesBody = document.getElementById('tabelaVendasRecentes').getElementsByTagName('tbody')[0];
     const tabelaHistoricoMensalBody = document.getElementById('tabelaHistoricoMensal').getElementsByTagName('tbody')[0];    
+    const downloadBtn = document.getElementById('download-excel-btn');
+    
     let todasAsPecas = [];
  
     // Verifica se o usuário está logado. Se não, redireciona e para a execução do script.
     if (!isUserLoggedIn()) {
         window.location.href = 'login.html';
         return;
+    }
+
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', () => {
+            // A variável 'todasAsPecas' já está disponível neste escopo
+            exportarDadosParaExcel(todasAsPecas);
+        });
     }
 
     function atualizarResumoPrincipal() {
