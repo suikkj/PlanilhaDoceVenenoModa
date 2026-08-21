@@ -1,0 +1,35 @@
+# Dependências
+node_modules/
+
+# Segredos e ambiente
+.env
+.env.*
+*.pem
+google-services.json
+*firebase-adminsdk*
+*.serviceaccount*
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Builds e artefatos
+dist/
+build/
+.vercel/
+.gradle/
+
+# Crash
+crash-*
+
+# Power BI
+*.pbit
+*.pbix
+
+# Python
+__pycache__/
+
+# Sistema
+.DS_Store

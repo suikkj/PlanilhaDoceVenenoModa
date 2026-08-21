@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="imagens/Icon.png" type="image/png">
+    <title>Painel Admin</title>
+    <link rel="stylesheet" href="style.css"> <!-- Link para o CSS principal -->
+</head>
+<body>
+    <header>
+        <button id="themeToggleBtn" aria-label="Alternar tema">☀️</button>
+        <img src="imagens/Logo Site 3.png" alt="Logo Doce Veneno Modas" id="logoSite">
+        <!-- Adicionando um botão de Sair específico para o admin -->
+        <!-- A lógica de logout do admin pode ser diferente do logout do usuário comum -->
+        <button id="adminLogoutBtn" style="margin-left: 10px;">Sair do Painel</button>
+    </header>
+
+    <div class="container">
+        <h1>Painel de Controle de Solicitações</h1>
+        <div class="table-responsive"> <!-- Adicionado wrapper para responsividade -->
+            <table id="requestsTable">
+                <thead>
+                    <tr>
+                        <th>Email do Usuário</th>
+                        <!-- Removido colunas de ID e Item, pois agora listamos usuários pendentes -->
+                        <th>Status</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- As solicitações serão inseridas aqui pelo JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script src="js/config.js"></script>
+    <!-- Incluindo common.js para funcionalidades como o themeToggle -->
+    <script src="js/common.js"></script>
+    <!-- Incluindo o script específico do dashboard -->
+    <script src="js/admin-dashboard_script.js"></script>
+</body>
+
+<!-- Modal de Confirmação/Notificação (Reutiliza estilos de style.css) -->
+<div id="confirmActionModal" class="modal">
+    <div class="modal-content">
+        <h3 id="modalTitle">Confirmar Ação</h3>
+        <p id="modalMessage">Você tem certeza que deseja realizar esta ação?</p>
+        <!-- O formulário de edição (modalEditForm) não é necessário neste modal para o dashboard admin -->
+        <div class="modal-buttons">
+            <button id="btnConfirmModal">Confirmar</button>
+            <button id="btnCancelModal" class="btn-delete">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+</html>
