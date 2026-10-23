@@ -26,7 +26,7 @@ Sistema web de **gestão de estoque e financeiro** da loja **Doce Veneno**, cons
 npm install
 
 # 2. Configure as variáveis de ambiente em um arquivo .env (nunca commitar):
-#    SUPABASE_URL, SUPABASE_SERVICE_KEY, JWT_SECRET
+#    SUPABASE_URL, SUPABASE_SERVICE_KEY, JWT_SECRET, ADMIN_EMAILS (seu email, para aprovar usuários)
 
 # 3. Inicie o servidor
 npm start

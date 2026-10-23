@@ -1,4 +1,2 @@
-// Define a URL base da API dependendo do ambiente
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? 'http://localhost:3000/api' // URL para desenvolvimento local
-  : 'https://docevenenoestoque.onrender.com/api'; // URL para produção
+// Same origin: the Express server serves both the pages and /api (locally and on Vercel).
+const API_BASE_URL = '/api';

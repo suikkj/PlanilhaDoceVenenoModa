@@ -1,75 +1,173 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="imagens/Icon.png" type="image/png">
-    <title>Controle de Estoque - Doce Veneno Modas</title>
-    <link rel="stylesheet" href="style.css"> <!-- Mantém o mesmo CSS -->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Doce Veneno · Estoque</title>
+<link rel="icon" href="imagens/Icon.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400..600&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <header>
-        <img src="imagens/Logo Site 3.png" alt="Logo Doce Veneno Modas" id="logoSite">
-        <button id="logoutBtn" style="display: none; margin-left: 10px;">Sair</button>
-    </header>
-    <div class="container">
-        <h1>Painel Principal</h1>
 
-        <nav class="main-nav">
-            <a href="index.html" class="nav-link active">Painel Principal</a>
-            <a href="estoque.html" class="nav-link">Gerenciar Estoque</a>
-            <a href="vendas.html" class="nav-link">Histórico de Vendas</a>
-        </nav>
+<!-- Login / cadastro -->
+<main id="authView" class="auth" hidden>
+  <button type="button" class="theme-btn" data-theme-toggle>Modo escuro</button>
+  <div class="auth-brand">
+    <img src="imagens/Logo Site 3.png" alt="Doce Veneno Moda Feminina">
+  </div>
+  <form id="authForm" class="auth-form" novalidate>
+    <h1 id="authTitle">Entrar</h1>
+    <label>Email <input type="email" id="authEmail" autocomplete="email" required></label>
+    <label>Senha <input type="password" id="authPassword" autocomplete="current-password" minlength="6" required></label>
+    <p id="authMsg" class="form-msg" role="alert"></p>
+    <button type="submit" class="btn btn-primary" id="authSubmit">Entrar</button>
+    <button type="button" class="btn-link" id="authToggle">Não tem conta? Criar conta</button>
+  </form>
+</main>
 
-        <section id="resumo-financeiro">
-            <h2>Resumo Financeiro Geral</h2>
-            <div class="summary">
-                <p>Total Gasto em Compras (Geral): <span id="totalGastoGeral" class="currency">0,00</span></p>
-                <p>Lucro Total Realizado (Vendas): <span id="lucroTotalVendas" class="currency">0,00</span></p>
-            </div>
-        </section>
+<!-- App -->
+<div id="appView" hidden>
+  <header class="topbar">
+    <img src="imagens/Logo Site 3.png" alt="Doce Veneno" class="topbar-logo">
+    <nav class="tabs" aria-label="Seções">
+      <a href="#estoque" data-tab="estoque">Estoque</a>
+      <a href="#vendas" data-tab="vendas">Vendas</a>
+      <a href="#usuarios" data-tab="usuarios" id="tabUsuarios" hidden>Usuários <span id="pendingBadge" class="badge" hidden></span></a>
+    </nav>
+    <button type="button" class="theme-btn" data-theme-toggle>Modo escuro</button>
+    <button class="btn-link topbar-out" id="logoutBtn">Sair</button>
+  </header>
 
-        <section id="vendas-recentes">
-            <h2>Vendas Recentes</h2>
-            <div class="table-responsive"> <!-- Adicionado wrapper para responsividade -->
-                <table id="tabelaVendasRecentes">
-                    <thead>
-                        <tr>
-                            <th>Nome da Peça</th>
-                            <th>Data da Venda</th>
-                            <th>Preço de Venda</th>
-                            <th>Lucro da Venda</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- As vendas recentes serão inseridas aqui pelo JavaScript -->
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <section id="historico-mensal">
-            <h2>Histórico Mensal (a partir de Maio/2025)</h2>
-            <div class="table-responsive"> <!-- Adicionado wrapper para responsividade -->
-                <table id="tabelaHistoricoMensal">
-                    <thead>
-                        <tr>
-                            <th>Mês/Ano</th>
-                            <th>Total Vendas (R$)</th>
-                            <th>Total Gastos (CMV) (R$)</th>
-                            <th>Lucro do Mês (R$)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Dados mensais serão inseridos aqui -->
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
+  <!-- ESTOQUE -->
+  <section id="view-estoque" class="view">
+    <div class="band">
+      <div class="figure"><span id="estPecas">0</span><small>peças em estoque</small></div>
+      <div class="figure"><span id="estInvestido">R$ 0,00</span><small>investido</small></div>
+      <div class="figure"><span id="estPotencial">R$ 0,00</span><small>lucro se vender tudo</small></div>
+      <button class="btn btn-copper" id="addBtn">Nova peça</button>
     </div>
-    <script src="js/config.js"></script>
-    <script src="js/common.js"></script>
-    <script src="js/index_script.js"></script>
+
+    <div class="toolbar">
+      <input type="search" id="search" placeholder="Buscar por nome ou cor" aria-label="Buscar por nome ou cor">
+      <div class="chips" id="sizeChips" role="group" aria-label="Filtrar por tamanho"></div>
+      <select id="colorFilter" aria-label="Filtrar por cor"><option value="">Todas as cores</option></select>
+      <label class="check"><input type="checkbox" id="lowOnly"> Só estoque baixo</label>
+    </div>
+
+    <div class="bulk" id="bulkBar" hidden>
+      <span id="bulkCount"></span>
+      <button class="btn btn-primary" id="bulkSell">Vender selecionadas</button>
+      <button class="btn btn-danger" id="bulkDelete">Apagar selecionadas</button>
+    </div>
+
+    <div class="table-wrap">
+      <table class="grid" id="stockTable">
+        <thead><tr>
+          <th class="c-check"><input type="checkbox" id="selectAll" aria-label="Selecionar todas"></th>
+          <th>Peça</th><th>Tam.</th><th class="num">Qtd.</th><th class="num">Compra</th><th class="num">Venda</th><th class="num">Lucro un.</th><th>Comprada em</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="empty" id="stockEmpty" hidden></p>
+  </section>
+
+  <!-- VENDAS -->
+  <section id="view-vendas" class="view" hidden>
+    <div class="band">
+      <label class="month-pick">
+        <select id="monthSelect" aria-label="Mês"></select>
+      </label>
+      <div class="figure"><span id="venFaturado">R$ 0,00</span><small>vendido</small></div>
+      <div class="figure"><span id="venLucro">R$ 0,00</span><small>lucro</small></div>
+      <div class="figure"><span id="venPecas">0</span><small>peças vendidas</small></div>
+    </div>
+
+    <div class="months" id="monthBars" aria-label="Lucro por mês"></div>
+
+    <div class="table-wrap">
+      <table class="grid" id="salesTable">
+        <thead><tr>
+          <th>Data</th><th>Peça</th><th>Tam.</th><th class="num">Qtd.</th><th class="num">Desc.</th><th class="num">Total</th><th class="num">Lucro</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="empty" id="salesEmpty" hidden></p>
+  </section>
+
+  <!-- USUÁRIOS -->
+  <section id="view-usuarios" class="view" hidden>
+    <h2 class="view-title">Pedidos de acesso</h2>
+    <ul class="users" id="userList"></ul>
+    <p class="empty" id="usersEmpty" hidden>Nenhum usuário cadastrado.</p>
+  </section>
+</div>
+
+<!-- Nova / editar peça -->
+<dialog id="pecaDialog">
+  <form method="dialog" id="pecaForm">
+    <h2 id="pecaTitle">Nova peça</h2>
+    <div class="fields">
+      <label class="wide">Nome <input id="fNome" required></label>
+      <label>Cor <input id="fCor" list="colorList"></label>
+      <label>Tamanho <input id="fTam" list="sizeList" placeholder="P, M, G, 38…"></label>
+      <label>Quantidade <input id="fQtd" type="number" min="1" value="1" required></label>
+      <label>Comprada em <input id="fData" type="date" required></label>
+      <label>Preço de compra <input id="fCompra" type="number" min="0" step="0.01" inputmode="decimal" required></label>
+      <label>Preço de venda <input id="fVenda" type="number" min="0" step="0.01" inputmode="decimal" required></label>
+      <div class="full markup" role="group" aria-label="Preencher venda a partir da compra">
+        <span>Venda = compra ×</span>
+        <button type="button" data-mk="2">2</button><button type="button" data-mk="2.5">2,5</button><button type="button" data-mk="3">3</button>
+      </div>
+    </div>
+    <p class="hint" id="fMargem"></p>
+    <p class="form-msg" id="pecaMsg" role="alert"></p>
+    <div class="actions">
+      <button value="cancel" formnovalidate class="btn btn-ghost">Cancelar</button>
+      <button value="again" class="btn btn-ghost" id="pecaAgain">Salvar e cadastrar outra</button>
+      <button value="ok" class="btn btn-primary" id="pecaSave">Salvar peça</button>
+    </div>
+  </form>
+  <datalist id="colorList"></datalist><datalist id="sizeList"></datalist>
+</dialog>
+
+<!-- Vender -->
+<dialog id="sellDialog">
+  <form method="dialog" id="sellForm">
+    <h2>Vender <span id="sNome"></span></h2>
+    <p class="hint" id="sInfo"></p>
+    <div class="fields">
+      <label>Quantidade <input id="sQtd" type="number" min="1" value="1" required></label>
+      <label>Desconto (%) <input id="sDesc" type="number" min="0" max="100" value="0"></label>
+      <label>Data da venda <input id="sData" type="date" required></label>
+    </div>
+    <p class="sell-total"><span id="sTotal">R$ 0,00</span> <small id="sLucro"></small></p>
+    <p class="form-msg" id="sellMsg" role="alert"></p>
+    <div class="actions">
+      <button value="cancel" formnovalidate class="btn btn-ghost">Cancelar</button>
+      <button value="ok" class="btn btn-primary">Registrar venda</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Confirmar -->
+<dialog id="confirmDialog">
+  <form method="dialog">
+    <h2 id="cTitle"></h2>
+    <p id="cText"></p>
+    <div class="actions">
+      <button value="cancel" class="btn btn-ghost">Cancelar</button>
+      <button value="ok" class="btn btn-danger" id="cOk"></button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>
