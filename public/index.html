@@ -54,6 +54,7 @@
       <div class="chips" id="sizeChips" role="group" aria-label="Filtrar por tamanho"></div>
       <select id="colorFilter" aria-label="Filtrar por cor"><option value="">Todas as cores</option></select>
       <label class="check"><input type="checkbox" id="lowOnly"> Só estoque baixo</label>
+      <label class="check"><input type="checkbox" id="staleOnly"> Paradas há mais de 60 dias</label>
     </div>
 
     <div class="bulk" id="bulkBar" hidden>
@@ -83,9 +84,12 @@
       <div class="figure"><span id="venFaturado">R$ 0,00</span><small>vendido</small></div>
       <div class="figure"><span id="venLucro">R$ 0,00</span><small>lucro</small></div>
       <div class="figure"><span id="venPecas">0</span><small>peças vendidas</small></div>
+      <button class="btn btn-copper" id="exportBtn">Exportar planilha</button>
     </div>
 
     <div class="months" id="monthBars" aria-label="Lucro por mês"></div>
+
+    <div class="ranks" id="ranks"></div>
 
     <div class="table-wrap">
       <table class="grid" id="salesTable">
@@ -112,9 +116,16 @@
     <h2 id="pecaTitle">Nova peça</h2>
     <div class="fields">
       <label class="wide">Nome <input id="fNome" required></label>
-      <label>Cor <input id="fCor" list="colorList"></label>
-      <label>Tamanho <input id="fTam" list="sizeList" placeholder="P, M, G, 38…"></label>
-      <label>Quantidade <input id="fQtd" type="number" min="1" value="1" required></label>
+      <fieldset class="full grade">
+        <legend>Cores, tamanhos e quantidades</legend>
+        <div class="grade-head" aria-hidden="true"><span>Cor</span><span>Tamanho</span><span>Qtd.</span><span></span></div>
+        <div id="gradeRows"></div>
+        <div class="grade-foot">
+          <button type="button" class="btn-link" id="gradeAdd">Adicionar cor ou tamanho</button>
+          <span id="gradeTotal"></span>
+        </div>
+      </fieldset>
+      <label id="fFornWrap" class="wide">Fornecedor <input id="fForn" list="fornList" autocomplete="off"></label>
       <label>Comprada em <input id="fData" type="date" required></label>
       <label>Preço de compra <input id="fCompra" type="number" min="0" step="0.01" inputmode="decimal" required></label>
       <label>Preço de venda <input id="fVenda" type="number" min="0" step="0.01" inputmode="decimal" required></label>
@@ -131,7 +142,7 @@
       <button value="ok" class="btn btn-primary" id="pecaSave">Salvar peça</button>
     </div>
   </form>
-  <datalist id="colorList"></datalist><datalist id="sizeList"></datalist>
+  <datalist id="colorList"></datalist><datalist id="sizeList"></datalist><datalist id="fornList"></datalist>
 </dialog>
 
 <!-- Vender -->
@@ -145,7 +156,19 @@
       <label>Quantidade <input id="sQtd" type="number" min="1" value="1" required></label>
       <label>Desconto (%) <input id="sDesc" type="number" min="0" max="100" value="0"></label>
       <label>Data da venda <input id="sData" type="date" required></label>
+      <label id="sPayWrap">Pagamento
+        <select id="sPay">
+          <option value="">Não informado</option>
+          <option value="pix">Pix</option>
+          <option value="credito">Cartão de crédito</option>
+          <option value="debito">Cartão de débito</option>
+          <option value="dinheiro">Dinheiro</option>
+        </select>
+      </label>
+      <label id="sCliWrap">Cliente (opcional) <input id="sCli" list="clienteList" autocomplete="off"></label>
+      <label id="sTelWrap">Telefone (opcional) <input id="sTel" type="tel" inputmode="tel" autocomplete="off"></label>
     </div>
+    <datalist id="clienteList"></datalist>
     <p class="sell-total"><span id="sTotal">R$ 0,00</span> <small id="sLucro"></small></p>
     <p class="form-msg" id="sellMsg" role="alert"></p>
     <div class="actions">

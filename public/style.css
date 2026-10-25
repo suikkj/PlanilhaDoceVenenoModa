@@ -201,6 +201,32 @@ dialog .fields .full { grid-column: 1 / -1; }
 .markup button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: .2rem .75rem; cursor: pointer; }
 .markup button:hover { border-color: var(--primary); }
 .actions { flex-wrap: wrap; }
+/* ---------- Grade de cor e tamanho ---------- */
+.grade { border: 1px solid var(--line); border-radius: var(--radius); padding: .6rem .8rem .7rem; margin: 0; min-width: 0; }
+.grade legend { color: var(--muted); font-size: .9rem; padding: 0 .3rem; }
+.grade-head, .grade-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 4.5rem 5.5rem; gap: .5rem; align-items: center; }
+.grade-head { font-size: .8rem; color: var(--muted); margin-bottom: .3rem; }
+#gradeRows { display: grid; gap: .5rem; }
+.grade-foot { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: .4rem; font-size: .9rem; color: var(--muted); }
+.grade-foot .btn-link { padding-left: 0; }
+.g-del[hidden] { display: inline-block !important; visibility: hidden; }
+@media (max-width: 480px) {
+    .grade-head, .grade-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 3.6rem; }
+    .grade-head span:last-child { display: none; }
+    .g-del { grid-column: 1 / -1; justify-self: end; padding: 0; font-size: .85rem; }
+    .g-del[hidden] { display: none !important; }
+}
+
+/* ---------- Rankings ---------- */
+.ranks { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.ranks:empty { display: none; }
+.rank { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem 1.1rem; min-width: 0; }
+.rank h3 { font-family: var(--display); font-weight: 500; font-size: 1.25rem; margin: 0 0 .6rem; }
+.rank ol { margin: 0; padding-left: 1.2rem; display: grid; gap: .45rem; }
+.rank li span { display: block; font-weight: 500; overflow-wrap: anywhere; }
+.rank li small { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
+.band .btn-copper:disabled { opacity: .5; cursor: not-allowed; }
+
 .toast {
     position: fixed; left: 50%; bottom: 1.5rem; transform: translate(-50%, 1rem); opacity: 0; pointer-events: none;
     background: var(--moss-deep); color: #fff; padding: .75rem 1.2rem; border-radius: var(--radius); max-width: calc(100% - 2rem);

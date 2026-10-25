@@ -10,7 +10,7 @@ const monthLabel = ym => { const [y, m] = ym.split('-'); return `${MONTHS[m - 1]
 
 let pecas = [];
 let isAdmin = false;
-const filters = { text: '', size: '', color: '', low: false };
+const filters = { text: '', size: '', color: '', low: false, stale: false };
 const selected = new Set();
 
 // ---------- API ----------
@@ -105,6 +105,12 @@ window.addEventListener('hashchange', showTab);
 const inStock = () => pecas.filter(p => p.status !== 'vendida');
 const sold = () => pecas.filter(p => p.status === 'vendida');
 const saleProfit = p => p.lucro != null ? Number(p.lucro) : (p.preco_venda - p.preco_comprado_unitario) * p.quantidade;
+const STALE_DAYS = 60;
+const isStale = p => !!p.data_compra && (Date.now() - new Date(p.data_compra + 'T00:00:00')) / 864e5 > STALE_DAYS;
+// Columns added by the 2026-10-25 migration: their fields only show once they exist in the database.
+const hasCol = k => pecas.some(p => k in p);
+const uniq = l => [...new Set(l)];
+const uniqJoin = v => uniq(splitList(v)).join(', ');
 
 async function load() {
     pecas = await api('/pecas');
@@ -121,8 +127,8 @@ async function load() {
 // ---------- Estoque ----------
 function renderFilters() {
     const items = inStock();
-    const sizes = [...new Set(items.map(p => (p.tamanho || '').trim().toUpperCase()).filter(Boolean))].sort();
-    const colors = [...new Set(items.map(p => (p.cor || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const sizes = uniq(items.flatMap(p => splitList(p.tamanho).map(t => t.toUpperCase()))).sort();
+    const colors = uniq(items.flatMap(p => splitList(p.cor))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
     $('#sizeChips').innerHTML = ['', ...sizes].map(s =>
         `<button type="button" data-size="${esc(s)}" aria-pressed="${filters.size === s}">${s ? esc(s) : 'Todos'}</button>`).join('');
     const cur = filters.color;
@@ -130,6 +136,7 @@ function renderFilters() {
         colors.map(c => `<option ${c === cur ? 'selected' : ''}>${esc(c)}</option>`).join('');
     $('#colorList').innerHTML = colors.map(c => `<option value="${esc(c)}">`).join('');
     $('#sizeList').innerHTML = sizes.map(s => `<option value="${esc(s)}">`).join('');
+    $('#fornList').innerHTML = uniq(pecas.map(p => p.fornecedor).filter(Boolean)).map(f => `<option value="${esc(f)}">`).join('');
 }
 
 function renderStock() {
@@ -142,9 +149,10 @@ function renderStock() {
     const t = filters.text.toLowerCase();
     const rows = all.filter(p =>
         (!t || `${p.nome} ${p.cor || ''}`.toLowerCase().includes(t)) &&
-        (!filters.size || (p.tamanho || '').trim().toUpperCase() === filters.size) &&
-        (!filters.color || (p.cor || '').trim() === filters.color) &&
-        (!filters.low || p.quantidade <= LOW_STOCK));
+        (!filters.size || splitList(p.tamanho).some(t => t.toUpperCase() === filters.size)) &&
+        (!filters.color || splitList(p.cor).includes(filters.color)) &&
+        (!filters.low || p.quantidade <= LOW_STOCK) &&
+        (!filters.stale || isStale(p)));
 
     for (const id of selected) if (!rows.some(p => p.id === id)) selected.delete(id);
 
@@ -153,13 +161,13 @@ function renderStock() {
         const low = p.quantidade <= LOW_STOCK;
         return `<tr class="${low ? 'low' : ''}">
           <td class="c-check"><input type="checkbox" data-id="${p.id}" ${selected.has(p.id) ? 'checked' : ''} aria-label="Selecionar ${esc(p.nome)}"></td>
-          <td><strong>${esc(p.nome)}</strong>${p.cor ? `<span class="sub">${esc(p.cor)}</span>` : ''}</td>
-          <td data-l="Tam.">${esc(p.tamanho) || '–'}</td>
+          <td><strong>${esc(p.nome)}</strong>${p.cor ? `<span class="sub">${esc(uniqJoin(p.cor))}</span>` : ''}</td>
+          <td data-l="Tam.">${esc(uniqJoin(p.tamanho)) || '–'}</td>
           <td class="num" data-l="Qtd."><span>${p.quantidade}${low ? '<span class="tag">baixo</span>' : ''}</span></td>
           <td class="num" data-l="Compra">${money(p.preco_comprado_unitario)}</td>
           <td class="num" data-l="Venda">${money(p.preco_venda)}</td>
           <td data-l="Lucro un." class="num ${lucro < 0 ? 'neg' : ''}">${money(lucro)}</td>
-          <td data-l="Comprada em">${fmtDate(p.data_compra)}</td>
+          <td data-l="Comprada em"><span>${fmtDate(p.data_compra)}${isStale(p) ? '<span class="tag">parada</span>' : ''}</span></td>
           <td class="row-actions">
             <button class="btn btn-primary btn-sm" data-sell="${p.id}">Vender</button>
             <button class="btn-link" data-edit="${p.id}">Editar</button>
@@ -183,6 +191,7 @@ function renderBulk() {
 $('#search').oninput = e => { filters.text = e.target.value.trim(); renderStock(); };
 $('#colorFilter').onchange = e => { filters.color = e.target.value; renderStock(); };
 $('#lowOnly').onchange = e => { filters.low = e.target.checked; renderStock(); };
+$('#staleOnly').onchange = e => { filters.stale = e.target.checked; renderStock(); };
 $('#sizeChips').onclick = e => {
     const b = e.target.closest('button');
     if (b) { filters.size = b.dataset.size; renderStock(); }
@@ -203,7 +212,60 @@ $('#stockTable tbody').onclick = e => {
 
 // Nova / editar peça
 let editing = null;
-const pecaFields = { fNome: 'nome', fCor: 'cor', fTam: 'tamanho', fQtd: 'quantidade', fData: 'data_compra', fCompra: 'preco_comprado_unitario', fVenda: 'preco_venda' };
+const pecaFields = { fNome: 'nome', fData: 'data_compra', fCompra: 'preco_comprado_unitario', fVenda: 'preco_venda', fForn: 'fornecedor' };
+
+// Grade: one row per color/size combination; saved as the per-unit comma lists the rest of the app uses.
+function gradeFromPiece(p) {
+    const c = splitList(p.cor), t = splitList(p.tamanho);
+    const at = (l, i) => l.length === 1 ? l[0] : (l[i] || '');
+    const rows = [];
+    for (let i = 0; i < p.quantidade; i++) {
+        const cor = at(c, i), tam = at(t, i).toUpperCase();
+        const r = rows.find(r => r.cor === cor && r.tam === tam);
+        r ? r.qtd++ : rows.push({ cor, tam, qtd: 1 });
+    }
+    return rows.length ? rows : [{ cor: '', tam: '', qtd: 1 }];
+}
+function gradeToPiece(rows) {
+    const cores = [], tams = [];
+    for (const r of rows) for (let i = 0; i < r.qtd; i++) { cores.push(r.cor); tams.push(r.tam); }
+    return { cor: rows.some(r => r.cor) ? joinList(cores) : null, tamanho: rows.some(r => r.tam) ? joinList(tams) : null, quantidade: cores.length };
+}
+function gradeError(rows) {
+    if (rows.some(r => !(Number.isInteger(r.qtd) && r.qtd >= 1))) return 'Cada linha precisa de quantidade 1 ou mais.';
+    if (rows.some(r => /,/.test(r.cor + r.tam))) return 'Use uma cor e um tamanho por linha, sem vírgula.';
+    if (rows.some(r => r.cor) && rows.some(r => !r.cor)) return 'Preencha a cor em todas as linhas, ou deixe todas sem cor.';
+    if (rows.some(r => r.tam) && rows.some(r => !r.tam)) return 'Preencha o tamanho em todas as linhas, ou deixe todas sem tamanho.';
+    return '';
+}
+function addGradeRow(r = { cor: '', tam: '', qtd: 1 }) {
+    const n = $('#gradeRows').children.length + 1;
+    const row = document.createElement('div');
+    row.className = 'grade-row';
+    row.innerHTML = `<input class="g-cor" list="colorList" aria-label="Cor, linha ${n}" value="${esc(r.cor)}">
+      <input class="g-tam" list="sizeList" aria-label="Tamanho, linha ${n}" value="${esc(r.tam)}">
+      <input class="g-qtd" type="number" min="1" inputmode="numeric" aria-label="Quantidade, linha ${n}" value="${r.qtd}">
+      <button type="button" class="btn-link g-del" aria-label="Remover linha ${n}">Remover</button>`;
+    $('#gradeRows').append(row);
+    updateGrade();
+    return row;
+}
+const readGrade = () => [...$('#gradeRows').children].map(r => ({
+    cor: r.querySelector('.g-cor').value.trim(), tam: r.querySelector('.g-tam').value.trim().toUpperCase(),
+    qtd: parseInt(r.querySelector('.g-qtd').value, 10),
+}));
+function updateGrade() {
+    const total = readGrade().reduce((n, r) => n + (r.qtd > 0 ? r.qtd : 0), 0);
+    $('#gradeTotal').textContent = `${total} ${total === 1 ? 'peça' : 'peças'} no total`;
+    const only = $('#gradeRows').children.length === 1;
+    document.querySelectorAll('.g-del').forEach(b => b.hidden = only);
+}
+$('#gradeAdd').onclick = () => {
+    const last = readGrade().at(-1);
+    addGradeRow({ cor: last?.cor || '', tam: '', qtd: 1 }).querySelector('.g-tam').focus(); // same color, next size is the common case
+};
+$('#gradeRows').oninput = updateGrade;
+$('#gradeRows').onclick = e => { if (e.target.classList.contains('g-del')) { e.target.closest('.grade-row').remove(); updateGrade(); } };
 function updateMargem() {
     const c = parseFloat($('#fCompra').value), v = parseFloat($('#fVenda').value);
     $('#fMargem').textContent = c > 0 && v >= 0 ? `Lucro de ${money(v - c)} por peça (${Math.round((v - c) / c * 100)}% sobre a compra)` : '';
@@ -214,7 +276,10 @@ function openPeca(p, keepDate) {
     $('#pecaAgain').hidden = !!p;
     $('#pecaTitle').textContent = p ? 'Editar peça' : 'Nova peça';
     for (const [id, key] of Object.entries(pecaFields)) $('#' + id).value = p ? (p[key] ?? '') : '';
-    if (!p) { $('#fQtd').value = 1; $('#fData').value = keepDate || today(); }
+    if (!p) $('#fData').value = keepDate || today();
+    $('#fFornWrap').hidden = !hasCol('fornecedor');
+    $('#gradeRows').innerHTML = '';
+    (p ? gradeFromPiece(p) : [undefined]).forEach(r => addGradeRow(r));
     $('#pecaMsg').textContent = '';
     updateMargem();
     $('#pecaDialog').showModal();
@@ -233,15 +298,17 @@ $('#pecaForm').onsubmit = async e => {
     const action = e.submitter?.value;
     if (action !== 'ok' && action !== 'again') return;
     e.preventDefault();
+    const grade = readGrade();
     const d = {
-        nome: $('#fNome').value.trim(), cor: $('#fCor').value.trim() || null, tamanho: $('#fTam').value.trim().toUpperCase() || null,
-        quantidade: parseInt($('#fQtd').value, 10), data_compra: $('#fData').value,
+        nome: $('#fNome').value.trim(), data_compra: $('#fData').value,
         preco_comprado_unitario: parseFloat($('#fCompra').value), preco_venda: parseFloat($('#fVenda').value),
+        ...gradeToPiece(grade),
     };
+    if (hasCol('fornecedor')) d.fornecedor = $('#fForn').value.trim() || null;
     const err = !d.nome ? 'Informe o nome da peça.'
-        : !(d.quantidade >= 1) ? 'A quantidade precisa ser 1 ou mais.'
-        : !d.data_compra ? 'Informe a data da compra.'
-        : !(d.preco_comprado_unitario >= 0) || !(d.preco_venda >= 0) ? 'Informe os dois preços (zero ou mais).' : '';
+        : gradeError(grade)
+        || (!d.data_compra ? 'Informe a data da compra.'
+        : !(d.preco_comprado_unitario >= 0) || !(d.preco_venda >= 0) ? 'Informe os dois preços (zero ou mais).' : '');
     if (err) { $('#pecaMsg').textContent = err; return; }
     $('#pecaDialog').close();
     if (editing) await run(() => api('/pecas/' + editing.id, { method: 'PUT', body: d }), 'Peça atualizada.');
@@ -297,6 +364,11 @@ function updateVariant() {
     updateSell();
 }
 $('#sCor').onchange = $('#sTam').onchange = updateVariant;
+// Returning customer: fill in the phone used last time.
+$('#sCli').onchange = () => {
+    const last = sold().find(x => x.cliente_nome === $('#sCli').value.trim() && x.cliente_telefone);
+    if (last && !$('#sTel').value) $('#sTel').value = last.cliente_telefone;
+};
 function sellNumbers() {
     const q = parseInt($('#sQtd').value, 10) || 0;
     const desc = Math.min(100, Math.max(0, parseFloat($('#sDesc').value) || 0));
@@ -318,6 +390,11 @@ function openSell(p) {
     $('#sQtd').value = 1;
     $('#sDesc').value = 0;
     $('#sData').value = today();
+    $('#sPay').value = '';
+    $('#sCli').value = $('#sTel').value = '';
+    $('#sPayWrap').hidden = !hasCol('forma_pagamento');
+    $('#sCliWrap').hidden = $('#sTelWrap').hidden = !hasCol('cliente_nome');
+    $('#clienteList').innerHTML = uniq(sold().map(x => x.cliente_nome).filter(Boolean)).map(c => `<option value="${esc(c)}">`).join('');
     $('#sellMsg').textContent = '';
     updateVariant();
     $('#sellDialog').showModal();
@@ -331,6 +408,9 @@ $('#sellForm').onsubmit = async e => {
     if (!data_venda) { $('#sellMsg').textContent = 'Informe a data da venda.'; return; }
     $('#sellDialog').close();
     const sale = { status: 'vendida', data_venda, desconto: n.desc, preco_venda: n.unit, lucro: n.lucro, quantidade: n.q, cor: cor || null, tamanho: tam || null };
+    if (hasCol('forma_pagamento')) sale.forma_pagamento = $('#sPay').value || null;
+    if (hasCol('cliente_nome')) Object.assign(sale, { cliente_nome: $('#sCli').value.trim() || null, cliente_telefone: $('#sTel').value.trim() || null });
+    if (hasCol('fornecedor')) sale.fornecedor = p.fornecedor ?? null;
     const rest = afterSale(sellStock, cor, tam, n.q);
     await run(async () => {
         if (n.q === p.quantidade) return api('/pecas/' + p.id, { method: 'PUT', body: sale });
@@ -401,8 +481,8 @@ function renderSales() {
         const l = saleProfit(p);
         return `<tr>
           <td>${fmtDate(p.data_venda)}</td>
-          <td><strong>${esc(p.nome)}</strong>${p.cor ? `<span class="sub">${esc(p.cor)}</span>` : ''}</td>
-          <td data-l="Tam.">${esc(p.tamanho) || '–'}</td>
+          <td><strong>${esc(p.nome)}</strong>${saleSub(p) ? `<span class="sub">${esc(saleSub(p))}</span>` : ''}</td>
+          <td data-l="Tam.">${esc(uniqJoin(p.tamanho)) || '–'}</td>
           <td class="num" data-l="Qtd.">${p.quantidade}</td>
           <td class="num" data-l="Desconto">${p.desconto ? `${+p.desconto}%` : '–'}</td>
           <td class="num" data-l="Total">${money(p.preco_venda * p.quantidade)}</td>
@@ -413,7 +493,62 @@ function renderSales() {
     $('#salesEmpty').hidden = rows.length > 0;
     $('#salesEmpty').textContent = old ? 'Este mês veio do sistema antigo: só os totais foram guardados, sem as peças.' : 'Nenhuma venda neste período.';
     $('#salesTable').hidden = rows.length === 0;
+    salesRows = rows;
+    $('#exportBtn').disabled = rows.length === 0;
+    renderRanks(rows);
 }
+
+const PAY = { pix: 'Pix', credito: 'Cartão de crédito', debito: 'Cartão de débito', dinheiro: 'Dinheiro' };
+const saleSub = p => [uniqJoin(p.cor), p.cliente_nome && `para ${p.cliente_nome}`, PAY[p.forma_pagamento]].filter(Boolean).join(', ');
+let salesRows = [];
+
+// Rankings for the selected period. Each list only appears when it has data.
+function rankBy(rows, key) {
+    const m = new Map();
+    for (const p of rows) {
+        const k = key(p);
+        if (!k) continue;
+        const r = m.get(k) || { k, qtd: 0, fat: 0, lucro: 0 };
+        r.qtd += p.quantidade; r.fat += p.preco_venda * p.quantidade; r.lucro += saleProfit(p);
+        m.set(k, r);
+    }
+    return [...m.values()];
+}
+function renderRanks(rows) {
+    const pct = r => r.fat > 0 ? ` (${Math.round(r.lucro / r.fat * 100)}% de margem)` : '';
+    const lists = [
+        ['Mais vendidas', rankBy(rows, p => p.nome).sort((a, b) => b.qtd - a.qtd || b.fat - a.fat),
+            r => `${r.qtd} ${r.qtd === 1 ? 'peça' : 'peças'}, ${money(r.fat)}${pct(r)}`],
+        ['Melhores clientes', rankBy(rows, p => p.cliente_nome).sort((a, b) => b.fat - a.fat),
+            r => `${money(r.fat)} em ${r.qtd} ${r.qtd === 1 ? 'peça' : 'peças'}`],
+        ['Lucro por fornecedor', rankBy(rows, p => p.fornecedor).sort((a, b) => b.lucro - a.lucro),
+            r => `lucro ${money(r.lucro)}${pct(r)}`],
+        ['Por forma de pagamento', rankBy(rows, p => PAY[p.forma_pagamento]).sort((a, b) => b.fat - a.fat),
+            r => money(r.fat)],
+    ].filter(([, items]) => items.length);
+    $('#ranks').innerHTML = lists.map(([title, items, fmt]) => `<section class="rank">
+        <h3>${title}</h3>
+        <ol>${items.slice(0, 5).map(r => `<li><span>${esc(r.k)}</span><small>${fmt(r)}</small></li>`).join('')}</ol>
+      </section>`).join('');
+}
+
+// Spreadsheet export of the period's sales. Semicolons and a BOM so Excel in Portuguese opens it directly.
+function salesCsv(rows) {
+    const num = v => (Number(v) || 0).toFixed(2).replace('.', ',');
+    const cell = v => /[;"\n]/.test(String(v ?? '')) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? '');
+    const head = ['Data', 'Peça', 'Cor', 'Tamanho', 'Quantidade', 'Desconto %', 'Preço unitário', 'Total', 'Custo', 'Lucro', 'Pagamento', 'Cliente', 'Telefone', 'Fornecedor'];
+    const body = rows.map(p => [fmtDate(p.data_venda), p.nome, uniqJoin(p.cor), uniqJoin(p.tamanho), p.quantidade, p.desconto || 0,
+        num(p.preco_venda), num(p.preco_venda * p.quantidade), num(p.preco_comprado_unitario * p.quantidade), num(saleProfit(p)),
+        PAY[p.forma_pagamento] || '', p.cliente_nome || '', p.cliente_telefone || '', p.fornecedor || '']);
+    return '\ufeff' + [head, ...body].map(r => r.map(cell).join(';')).join('\r\n');
+}
+$('#exportBtn').onclick = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([salesCsv(salesRows)], { type: 'text/csv;charset=utf-8' }));
+    a.download = `vendas-doce-veneno-${month === 'all' ? 'todo-periodo' : month}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
 $('#monthSelect').onchange = e => { month = e.target.value; renderSales(); };
 $('#monthBars').onclick = e => { const b = e.target.closest('button'); if (b) { month = b.dataset.month; renderSales(); } };
 $('#salesTable tbody').onclick = async e => {
@@ -423,7 +558,9 @@ $('#salesTable tbody').onclick = async e => {
     if (!await confirmAction('Desfazer venda', `Devolver ${p.quantidade}× ${p.nome} ao estoque e apagar esta venda?`, 'Devolver ao estoque')) return;
     const d = Number(p.desconto) || 0;
     const preco = d > 0 && d < 100 ? +(p.preco_venda / (1 - d / 100)).toFixed(2) : p.preco_venda; // restore list price
-    await run(() => api('/pecas/' + id, { method: 'PUT', body: { status: 'estoque', data_venda: null, desconto: null, lucro: null, preco_venda: preco } }), 'Peça devolvida ao estoque.');
+    const body = { status: 'estoque', data_venda: null, desconto: null, lucro: null, preco_venda: preco };
+    for (const k of ['forma_pagamento', 'cliente_nome', 'cliente_telefone']) if (hasCol(k)) body[k] = null;
+    await run(() => api('/pecas/' + id, { method: 'PUT', body }), 'Peça devolvida ao estoque.');
 };
 
 // ---------- Usuários ----------
