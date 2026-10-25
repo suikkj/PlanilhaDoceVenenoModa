@@ -252,7 +252,51 @@ $('#pecaForm').onsubmit = async e => {
 };
 
 // Vender
-let selling = null;
+// Colors and sizes are stored as comma lists, one entry per unit ("Preta, Branca, Branca" + "U, U, U").
+const splitList = s => String(s ?? '').split(',').map(x => x.trim()).filter(Boolean);
+function stockUnits(p) {
+    const n = p.quantidade;
+    const fit = l => l.length === n ? l : l.length === 1 ? Array(n).fill(l[0]) : l.length === 0 ? Array(n).fill('') : null;
+    const c = fit(splitList(p.cor)), t = fit(splitList(p.tamanho));
+    if (c && t) return { paired: true, units: c.map((cor, i) => ({ cor, tam: t[i] })) };
+    // Lists don't line up with the quantity: treat colors and sizes independently.
+    return { paired: false, c: splitList(p.cor), t: splitList(p.tamanho) };
+}
+const countOf = (l, v) => l.filter(x => x === v).length;
+function available(s, cor, tam, n) {
+    if (s.paired) return s.units.filter(u => u.cor === cor && u.tam === tam).length;
+    return Math.min(n, s.c.length ? countOf(s.c, cor) : n, s.t.length ? countOf(s.t, tam) : n);
+}
+const joinList = l => new Set(l).size <= 1 ? (l[0] || null) : l.join(', ');
+// What stays in stock after selling q units of cor/tam.
+function afterSale(s, cor, tam, q) {
+    if (s.paired) {
+        let left = q;
+        const rest = s.units.filter(u => !(left > 0 && u.cor === cor && u.tam === tam && left--));
+        return { cor: joinList(rest.map(u => u.cor).filter(Boolean)), tamanho: joinList(rest.map(u => u.tam).filter(Boolean)) };
+    }
+    const drop = (l, v) => { let k = q; return l.filter(x => !(k > 0 && x === v && k--)); };
+    return { cor: joinList(drop(s.c, cor)), tamanho: joinList(drop(s.t, tam)) };
+}
+
+let selling = null, sellStock = null;
+function fillSelect(sel, values, keep) {
+    const uniq = [...new Set(values)];
+    sel.innerHTML = uniq.map(v => `<option value="${esc(v)}">${v ? esc(v) : 'Sem informação'}</option>`).join('');
+    if (uniq.includes(keep)) sel.value = keep;
+    sel.closest('label').hidden = uniq.length === 0 || (uniq.length === 1 && !uniq[0]);
+}
+function updateVariant() {
+    const s = sellStock, p = selling, cor = $('#sCor').value;
+    if (s.paired) fillSelect($('#sTam'), s.units.filter(u => u.cor === cor).map(u => u.tam), $('#sTam').value);
+    const max = available(s, cor, $('#sTam').value, p.quantidade);
+    $('#sQtd').max = max;
+    if (+$('#sQtd').value > max) $('#sQtd').value = max;
+    const desc = [cor, $('#sTam').value].filter(Boolean).join(', ');
+    $('#sInfo').textContent = `${max} ${max === 1 ? 'unidade' : 'unidades'}${desc ? ` em ${desc}` : ''} a ${money(p.preco_venda)}.`;
+    updateSell();
+}
+$('#sCor').onchange = $('#sTam').onchange = updateVariant;
 function sellNumbers() {
     const q = parseInt($('#sQtd').value, 10) || 0;
     const desc = Math.min(100, Math.max(0, parseFloat($('#sDesc').value) || 0));
@@ -268,28 +312,31 @@ $('#sQtd').oninput = $('#sDesc').oninput = updateSell;
 function openSell(p) {
     selling = p;
     $('#sNome').textContent = p.nome;
-    $('#sInfo').textContent = `${[p.cor, p.tamanho].filter(Boolean).join(', ') || 'Sem cor/tamanho'}. ${p.quantidade} em estoque a ${money(p.preco_venda)}.`;
-    $('#sQtd').max = p.quantidade;
+    sellStock = stockUnits(p);
+    fillSelect($('#sCor'), sellStock.paired ? sellStock.units.map(u => u.cor) : sellStock.c);
+    fillSelect($('#sTam'), sellStock.paired ? sellStock.units.map(u => u.tam) : sellStock.t);
     $('#sQtd').value = 1;
     $('#sDesc').value = 0;
     $('#sData').value = today();
     $('#sellMsg').textContent = '';
-    updateSell();
+    updateVariant();
     $('#sellDialog').showModal();
 }
 $('#sellForm').onsubmit = async e => {
     if (e.submitter?.value !== 'ok') return;
     e.preventDefault();
     const n = sellNumbers(), p = selling, data_venda = $('#sData').value;
-    if (n.q < 1 || n.q > p.quantidade) { $('#sellMsg').textContent = `Venda de 1 a ${p.quantidade} unidades.`; return; }
+    const cor = $('#sCor').value, tam = $('#sTam').value, max = available(sellStock, cor, tam, p.quantidade);
+    if (n.q < 1 || n.q > max) { $('#sellMsg').textContent = max ? `Venda de 1 a ${max} unidades nessa cor e tamanho.` : 'Não há unidades nessa cor e tamanho.'; return; }
     if (!data_venda) { $('#sellMsg').textContent = 'Informe a data da venda.'; return; }
     $('#sellDialog').close();
-    const sale = { status: 'vendida', data_venda, desconto: n.desc, preco_venda: n.unit, lucro: n.lucro, quantidade: n.q };
+    const sale = { status: 'vendida', data_venda, desconto: n.desc, preco_venda: n.unit, lucro: n.lucro, quantidade: n.q, cor: cor || null, tamanho: tam || null };
+    const rest = afterSale(sellStock, cor, tam, n.q);
     await run(async () => {
         if (n.q === p.quantidade) return api('/pecas/' + p.id, { method: 'PUT', body: sale });
         // Partial sale: create the sold row first, so a failure never loses stock.
-        await api('/pecas', { method: 'POST', body: { nome: p.nome, cor: p.cor, tamanho: p.tamanho, data_compra: p.data_compra, preco_comprado_unitario: p.preco_comprado_unitario, ...sale } });
-        await api('/pecas/' + p.id, { method: 'PUT', body: { quantidade: p.quantidade - n.q } });
+        await api('/pecas', { method: 'POST', body: { nome: p.nome, data_compra: p.data_compra, preco_comprado_unitario: p.preco_comprado_unitario, ...sale } });
+        await api('/pecas/' + p.id, { method: 'PUT', body: { quantidade: p.quantidade - n.q, ...rest } });
     }, `Venda registrada: ${money(n.total)}.`);
 };
 
