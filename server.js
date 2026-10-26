@@ -8,6 +8,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const sharp = require('sharp');
+const webpush = require('web-push');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -78,6 +79,7 @@ app.post('/api/auth/register', route(async (req, res) => {
     const password_hash = await bcrypt.hash(password, 10);
     // Admins are active right away so the first account is never locked out.
     check(await supabase.from('usuarios').insert([{ email, password_hash, status: isAdmin(email) ? 'active' : 'pending' }]));
+    if (!isAdmin(email)) await notifyAdmins('Novo pedido de acesso', `${email} quer entrar no sistema.`, '/#usuarios');
     res.status(201).json({ message: isAdmin(email) ? 'Conta criada. Já pode entrar.' : 'Conta criada. Aguarde a aprovação para entrar.' });
 }));
 
@@ -248,6 +250,60 @@ app.post('/api/admin/users/:id/temp-password', auth, adminOnly, route(async (req
     res.json({ email: rows[0].email, password });
 }));
 
+// --- Notificações (Web Push) ---
+// The VAPID key pair is created on first use and kept in the database (push_config, RLS on, server only),
+// so there is nothing to set up in Vercel. Changing it would silently cut every device off, so it never rotates by itself.
+let vapid = null;
+async function getVapid() {
+    if (vapid) return vapid;
+    const read = async () => supabase.from('push_config').select('public_key, private_key').eq('id', 1).maybeSingle();
+    let r = await read();
+    if (r.error) return null; // table not created yet
+    if (!r.data) {
+        const k = webpush.generateVAPIDKeys();
+        const ins = await supabase.from('push_config').insert([{ id: 1, public_key: k.publicKey, private_key: k.privateKey }]);
+        if (ins.error && ins.error.code !== '23505') return null; // 23505: another request created it first
+        r = await read();
+    }
+    return (vapid = r.data);
+}
+app.get('/api/push/key', auth, adminOnly, route(async (req, res) => {
+    const v = await getVapid();
+    if (!v) return res.status(503).json({ message: 'Rode o SQL das notificações no Supabase para ativar.' });
+    res.json({ publicKey: v.public_key });
+}));
+app.post('/api/push/subscribe', auth, adminOnly, route(async (req, res) => {
+    const sub = req.body.subscription || {};
+    let host = '';
+    try { host = new URL(sub.endpoint).protocol; } catch { /* invalid */ }
+    if (host !== 'https:' || !sub.keys?.p256dh || !sub.keys?.auth) return res.status(400).json({ message: 'Inscrição de notificação inválida.' });
+    check(await supabase.from('push_inscricoes').upsert([{ endpoint: sub.endpoint, usuario_id: req.user.userId, chaves: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } }]));
+    res.status(201).json({ message: 'Notificações ativadas.' });
+}));
+app.post('/api/push/unsubscribe', auth, route(async (req, res) => {
+    check(await supabase.from('push_inscricoes').delete().eq('endpoint', String(req.body.endpoint || '')).eq('usuario_id', req.user.userId));
+    res.json({ message: 'Notificações desativadas.' });
+}));
+// Sends to every device of every active admin. Never throws: a notice must not break the action that caused it.
+async function notifyAdmins(title, body, url = '/') {
+    try {
+        const v = await getVapid();
+        if (!v) return;
+        const users = check(await supabase.from('usuarios').select('id, email, status'));
+        const ids = users.filter(u => u.status === 'active' && isAdmin(u.email)).map(u => u.id);
+        if (!ids.length) return;
+        const subs = check(await supabase.from('push_inscricoes').select('*').in('usuario_id', ids));
+        const payload = JSON.stringify({ title, body, url });
+        await Promise.all(subs.map(s => webpush.sendNotification({ endpoint: s.endpoint, keys: s.chaves }, payload,
+            { TTL: 86400, vapidDetails: { subject: APP_URL, publicKey: v.public_key, privateKey: v.private_key } })
+            .catch(async err => {
+                // 404/410: the device unsubscribed or uninstalled the app; forget it.
+                if (err.statusCode === 404 || err.statusCode === 410) await supabase.from('push_inscricoes').delete().eq('endpoint', s.endpoint);
+                else console.error('push', err.statusCode, err.body);
+            })));
+    } catch (err) { console.error('notifyAdmins', err); }
+}
+
 // --- Planilha completa e backup ---
 const PAY = { pix: 'Pix', credito: 'Cartão de crédito', debito: 'Cartão de débito', dinheiro: 'Dinheiro', nuvemshop: 'Nuvemshop' };
 function fullCsv(pecas) {
@@ -292,7 +348,7 @@ app.get('/api/cron/backup', route(async (req, res) => {
 }));
 
 // Defined last because it registers its own routes; the piece routes above call nuvem.afterChange at request time.
-const nuvem = require('./nuvemshop')(app, { supabase, check, route, auth, adminOnly, jwtSecret, APP_URL });
+const nuvem = require('./nuvemshop')(app, { supabase, check, route, auth, adminOnly, jwtSecret, APP_URL, notifyAdmins });
 
 if (require.main === module) {
     const port = process.env.PORT || 3000;

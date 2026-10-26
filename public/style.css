@@ -286,3 +286,37 @@ dialog.wide-dialog { width: min(760px, 100% - 2rem); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .toast.error { background: var(--loss); }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+
+/* ---------- App instalado no celular ---------- */
+/* Safe areas: the notch and the home bar on iPhones (viewport-fit=cover). */
+.topbar {
+    padding-top: max(.4rem, env(safe-area-inset-top));
+    padding-left: max(1.5rem, env(safe-area-inset-left));
+    padding-right: max(1.5rem, env(safe-area-inset-right));
+}
+.view { padding-left: max(1.5rem, env(safe-area-inset-left)); padding-right: max(1.5rem, env(safe-area-inset-right)); padding-bottom: calc(3rem + env(safe-area-inset-bottom)); }
+.toast { bottom: calc(1.5rem + env(safe-area-inset-bottom)); }
+.auth { padding-bottom: env(safe-area-inset-bottom); }
+@media (max-width: 720px) {
+    .topbar { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); }
+    .view { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); }
+}
+
+.app-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem;
+    padding: .6rem max(1.5rem, env(safe-area-inset-right)) .6rem max(1.5rem, env(safe-area-inset-left)); font-size: .95rem; }
+.offline-bar { background: var(--low); color: var(--ink); border-bottom: 1px solid var(--line); }
+.ios-tip { background: var(--surface); color: var(--ink); border-bottom: 1px solid var(--line); }
+.ios-tip .btn-link { padding-left: 0; }
+
+/* Without internet the list stays readable; actions that change stock are dimmed (and blocked in the code). */
+.offline [data-sell], .offline [data-edit], .offline [data-undo], .offline #addBtn, .offline #bulkSell, .offline #bulkDelete, .offline #exportAllBtn {
+    opacity: .45; cursor: not-allowed;
+}
+
+/* Touch screens: every control at least 44px tall. */
+@media (pointer: coarse) {
+    .btn, .btn-sm, input, select { min-height: 44px; }
+    .btn-link, .theme-btn, .tabs a { min-height: 44px; display: inline-flex; align-items: center; }
+    .chips button { min-height: 40px; }
+    input[type=checkbox] { width: 1.4rem; height: 1.4rem; min-height: 0; }
+}

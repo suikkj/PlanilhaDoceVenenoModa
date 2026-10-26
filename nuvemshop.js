@@ -29,7 +29,7 @@ function matchingCombos(p, stock, values) {
     return partial.length === 1 ? partial : [];
 }
 
-module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOnly, jwtSecret, APP_URL }) {
+module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOnly, jwtSecret, APP_URL, notifyAdmins = async () => {} }) {
     const cfg = process.env.NUVEMSHOP_TOKEN && process.env.NUVEMSHOP_STORE_ID
         ? { store_id: String(process.env.NUVEMSHOP_STORE_ID).trim(), access_token: String(process.env.NUVEMSHOP_TOKEN).trim() } : null;
     // Webhooks are authenticated by a secret key in their URL (derived from JWT_SECRET), and every event is
@@ -228,10 +228,13 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
                 cliente: order.customer?.name || order.contact_name || null, itens_pendentes: pendentes,
             }).eq('pedido_id', String(orderId)));
             await afterChange(order.products.map(baseName)); // Nuvemshop stock = stock here, also after concurrent shop sales
+            if (pendentes.length) await notifyAdmins('Pedido da Nuvemshop com pendência',
+                `Pedido #${order.number}: ${pendentes.length} ${pendentes.length === 1 ? 'item não encontrado' : 'itens não encontrados'} no estoque. Registre a venda à mão.`, '/#nuvemshop');
             return pendentes.length ? 'pendente' : 'ok';
         } catch (err) {
             // Keep the claim (a retry could double-sell what already went through); the admin sees the error.
             await supabase.from('nuvemshop_pedidos').update({ status: 'erro', erro: String(err.message).slice(0, 500) }).eq('pedido_id', String(orderId));
+            await notifyAdmins('Pedido da Nuvemshop não processado', `Pedido ${order.number ?? orderId}: confira o estoque na aba Nuvemshop.`, '/#nuvemshop');
             throw err;
         }
     }

@@ -2,7 +2,14 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2d3f27">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Doce Veneno">
 <title>Doce Veneno · Estoque</title>
 <link rel="icon" href="imagens/Icon.png" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -47,9 +54,15 @@
       <a href="#usuarios" data-tab="usuarios" id="tabUsuarios" hidden>Usuários <span id="pendingBadge" class="badge" hidden></span></a>
       <a href="#nuvemshop" data-tab="nuvemshop" id="tabNuvem" hidden>Nuvemshop <span id="nsBadge" class="badge" hidden></span></a>
     </nav>
+    <button type="button" class="theme-btn" id="installBtn" hidden>Instalar app</button>
     <button type="button" class="theme-btn" data-theme-toggle>Modo escuro</button>
     <button class="btn-link topbar-out" id="logoutBtn">Sair</button>
   </header>
+  <div class="app-bar offline-bar" id="offlineBar" role="status" hidden></div>
+  <div class="app-bar ios-tip" id="iosTip" hidden>
+    <span>Instale o app no iPhone: toque em <strong>Compartilhar</strong> e depois em <strong>Adicionar à Tela de Início</strong>.</span>
+    <button type="button" class="btn-link" id="iosTipOk">Entendi</button>
+  </div>
 
   <!-- ESTOQUE -->
   <section id="view-estoque" class="view">
@@ -142,6 +155,11 @@
   </section>
 
   <section id="view-usuarios" class="view" hidden>
+    <h2 class="view-title">Notificações neste aparelho</h2>
+    <div class="ns-status">
+      <p id="pushText">Receba um aviso quando alguém pedir acesso ou um pedido da Nuvemshop ficar com pendência.</p>
+      <button class="btn btn-primary" id="pushBtn" hidden>Ativar notificações</button>
+    </div>
     <h2 class="view-title">Pedidos de acesso</h2>
     <ul class="users" id="userList"></ul>
     <p class="empty" id="usersEmpty" hidden>Nenhum usuário cadastrado.</p>

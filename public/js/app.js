@@ -15,12 +15,16 @@ let salesSort = 'recent';
 const selected = new Set();
 
 // ---------- API ----------
+const OFFLINE_MSG = 'Sem conexão com a internet. Tente de novo quando a conexão voltar.';
 async function api(path, { method = 'GET', body } = {}) {
-    const res = await fetch(API_BASE_URL + path, {
-        method,
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
-        body: body && JSON.stringify(body),
-    });
+    let res;
+    try {
+        res = await fetch(API_BASE_URL + path, {
+            method,
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+            body: body && JSON.stringify(body),
+        });
+    } catch { throw Object.assign(new Error(OFFLINE_MSG), { offline: true }); } // fetch only throws when the network fails
     if (res.status === 401) { logout(); throw new Error('Sua sessão expirou. Entre de novo.'); }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.message || `Erro ${res.status}`);
@@ -83,7 +87,9 @@ function showAuth() {
     (resetToken ? $('#authPassword') : $('#authEmail')).focus();
 }
 function logout() {
+    stopPush(localStorage.getItem('accessToken')); // a shared phone should stop getting admin notices once its user leaves
     localStorage.removeItem('accessToken');
+    try { localStorage.removeItem(STOCK_CACHE); } catch {}
     showAuth();
 }
 $('#authToggle').onclick = () => {
@@ -162,8 +168,30 @@ function sortRows(rows, how, dateKey) {
     return [...rows].sort(cmp);
 }
 
+// Last stock list, kept on the device so the app still shows it without internet (read-only).
+const STOCK_CACHE = 'dv-ultimo-estoque';
+let offline = false;
+function setOffline(on, at) {
+    offline = on;
+    document.body.classList.toggle('offline', on);
+    $('#offlineBar').hidden = !on;
+    $('#offlineBar').textContent = on
+        ? `Sem internet: mostrando o estoque de ${at ? new Date(at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'antes'}. Vender e editar voltam quando a conexão voltar.`
+        : '';
+}
+const needsNet = () => { if (offline) toast('Sem internet: vender e editar ficam bloqueados para não vender uma peça que já saiu.', true); return offline; };
 async function load() {
-    pecas = await api('/pecas');
+    try {
+        pecas = await api('/pecas');
+        try { localStorage.setItem(STOCK_CACHE, JSON.stringify({ at: Date.now(), pecas })); } catch { /* full or blocked: the app still works online */ }
+        setOffline(false);
+    } catch (err) {
+        let saved = null;
+        try { saved = JSON.parse(localStorage.getItem(STOCK_CACHE)); } catch {}
+        if (!err.offline || !saved) throw err;
+        pecas = saved.pecas;
+        setOffline(true, saved.at);
+    }
     for (const p of pecas) {
         p.quantidade = Number(p.quantidade) || 0;
         p.preco_venda = Number(p.preco_venda) || 0;
@@ -171,7 +199,7 @@ async function load() {
     }
     renderStock();
     renderSales();
-    if (isAdmin) { loadUsers(); loadNuvemshop(); }
+    if (isAdmin && !offline) { loadUsers(); loadNuvemshop(); renderPush(); }
 }
 
 // ---------- Estoque ----------
@@ -324,6 +352,7 @@ function updateMargem() {
 }
 $('#fCompra').oninput = $('#fVenda').oninput = updateMargem;
 function openPeca(p, keepDate) {
+    if (needsNet()) return;
     editing = p || null;
     $('#pecaAgain').hidden = !!p;
     $('#pecaTitle').textContent = p ? 'Editar peça' : 'Nova peça';
@@ -512,6 +541,7 @@ async function registerSale(p, stock, cor, tam, q, desc, data_venda, extra) {
 }
 
 function openSell(p) {
+    if (needsNet()) return;
     selling = p;
     $('#sNome').textContent = p.nome;
     sellStock = stockUnits(p);
@@ -551,6 +581,7 @@ function updateBulk() {
     $('#bLucro').textContent = `lucro ${money(lucro)}`;
 }
 $('#bulkSell').onclick = () => {
+    if (needsNet()) return;
     const list = pecas.filter(p => selected.has(p.id));
     $('#bTitle').textContent = `Vender ${list.length} ${list.length === 1 ? 'peça' : 'peças'}`;
     $('#bulkItems').innerHTML = '';
@@ -881,4 +912,83 @@ async function start() {
         await load();
     } catch (e) { toast(e.message, true); }
 }
+// ---------- App instalável ----------
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(err => console.warn('service worker', err));
+addEventListener('online', () => { if (localStorage.getItem('accessToken')) load().catch(() => {}); });
+addEventListener('offline', () => {
+    if ($('#appView').hidden) return;
+    let at;
+    try { at = JSON.parse(localStorage.getItem(STOCK_CACHE) || '{}').at; } catch { /* storage blocked */ }
+    setOffline(true, at);
+});
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+// Android/Chrome: the browser offers its own install prompt; we keep it for the "Instalar app" button.
+let installPrompt = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; $('#installBtn').hidden = false; });
+addEventListener('appinstalled', () => { installPrompt = null; $('#installBtn').hidden = true; });
+$('#installBtn').onclick = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => {});
+    installPrompt = null; $('#installBtn').hidden = true;
+};
+// iPhone: no install prompt exists, so show the two taps once (until dismissed).
+let tipSeen = false;
+try { tipSeen = localStorage.getItem('dv-dica-ios') === '1'; } catch {}
+$('#iosTip').hidden = !(isIOS && !standalone() && !tipSeen);
+$('#iosTipOk').onclick = () => { $('#iosTip').hidden = true; try { localStorage.setItem('dv-dica-ios', '1'); } catch {} };
+
+// ---------- Notificações (admins) ----------
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const b64ToBytes = b64 => { const s = atob((b64 + '='.repeat((4 - b64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(s, c => c.charCodeAt(0)); };
+async function currentSub() { return pushSupported() ? (await navigator.serviceWorker.ready).pushManager.getSubscription() : null; }
+async function renderPush() {
+    const text = $('#pushText'), btn = $('#pushBtn');
+    btn.hidden = true;
+    if (!pushSupported()) {
+        text.textContent = isIOS && !standalone()
+            ? 'No iPhone, as notificações só funcionam com o app instalado na tela inicial (iOS 16.4 ou mais novo). Instale e abra por ele.'
+            : 'Este navegador não recebe notificações.';
+        return;
+    }
+    if (Notification.permission === 'denied') { text.textContent = 'As notificações estão bloqueadas para este site. Libere nas configurações do navegador ou do celular.'; return; }
+    const sub = await currentSub().catch(() => null);
+    text.textContent = sub ? 'Este aparelho recebe avisos de pedidos de acesso e de pendências da Nuvemshop.'
+        : 'Receba um aviso quando alguém pedir acesso ou um pedido da Nuvemshop ficar com pendência.';
+    btn.textContent = sub ? 'Desativar notificações' : 'Ativar notificações';
+    btn.hidden = false;
+}
+$('#pushBtn').onclick = async () => {
+    const btn = $('#pushBtn');
+    btn.disabled = true;
+    try {
+        const sub = await currentSub();
+        if (sub) {
+            await api('/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } }).catch(() => {});
+            await sub.unsubscribe();
+            toast('Notificações desativadas neste aparelho.');
+        } else {
+            if (await Notification.requestPermission() !== 'granted') throw new Error('Sem permissão, o aparelho não pode receber avisos.');
+            const { publicKey } = await api('/push/key');
+            const reg = await navigator.serviceWorker.ready;
+            const created = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) });
+            await api('/push/subscribe', { method: 'POST', body: { subscription: created.toJSON() } });
+            toast('Notificações ativadas neste aparelho.');
+        }
+    } catch (err) { toast(err.message, true); }
+    finally { btn.disabled = false; renderPush(); }
+};
+// Runs during logout, so it uses the token captured before it was removed and plain fetch:
+// api() would treat the answer to a missing token as "session expired" and log out again, in a loop.
+async function stopPush(token) {
+    try {
+        const sub = await currentSub();
+        if (!sub) return;
+        if (token) await fetch(API_BASE_URL + '/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint: sub.endpoint }),
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } }).catch(() => {});
+        await sub.unsubscribe();
+    } catch { /* best effort */ }
+}
+
 localStorage.getItem('accessToken') && !resetToken ? start() : showAuth(); // a reset link always opens the new-password screen
