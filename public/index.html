@@ -185,9 +185,14 @@
       <div class="full fotos" id="fFotosWrap">
         <span class="fotos-label">Fotos</span>
         <div class="fotos-grid" id="fFotos"></div>
-        <label class="btn btn-ghost foto-add">Adicionar fotos
-          <input type="file" id="fFotoInput" class="sr-only" accept="image/*" multiple>
-        </label>
+        <div class="foto-btns">
+          <label class="btn btn-primary foto-add foto-cam">Tirar foto
+            <input type="file" id="fFotoCam" class="sr-only foto-input" accept="image/*" capture="environment">
+          </label>
+          <label class="btn btn-ghost foto-add">Escolher da galeria
+            <input type="file" id="fFotoInput" class="sr-only foto-input" accept="image/*" multiple>
+          </label>
+        </div>
         <p class="hint" id="fFotosHint">Até 8 por peça. Viram WebP, mais leves, e vão junto para o produto na Nuvemshop.</p>
       </div>
       <label>Comprada em <input id="fData" type="date" required></label>
@@ -264,12 +269,17 @@
 </dialog>
 
 <!-- Foto em tela cheia -->
-<dialog id="viewer" class="viewer" aria-label="Foto em tela cheia">
-  <img id="vImg" alt="">
-  <button type="button" class="v-btn v-close" id="vClose" aria-label="Fechar">✕</button>
-  <button type="button" class="v-btn v-prev" id="vPrev" aria-label="Foto anterior">‹</button>
-  <button type="button" class="v-btn v-next" id="vNext" aria-label="Próxima foto">›</button>
-  <p class="v-count" id="vCount"></p>
+<dialog id="viewer" class="viewer" aria-label="Fotos da peça">
+  <div class="v-top">
+    <p class="v-title" id="vTitle"></p>
+    <button type="button" class="v-btn" id="vClose" aria-label="Fechar">✕</button>
+  </div>
+  <div class="v-stage" id="vStage">
+    <img id="vImg" alt="" draggable="false">
+    <button type="button" class="v-btn v-prev" id="vPrev" aria-label="Foto anterior">‹</button>
+    <button type="button" class="v-btn v-next" id="vNext" aria-label="Próxima foto">›</button>
+  </div>
+  <div class="v-strip" id="vStrip" role="group" aria-label="Escolher foto"></div>
 </dialog>
 
 <!-- Aviso -->

@@ -239,7 +239,7 @@ function renderStock() {
         const low = p.quantidade <= LOW_STOCK;
         return `<tr class="${low ? 'low' : ''}">
           <td class="c-check"><input type="checkbox" data-id="${p.id}" ${selected.has(p.id) ? 'checked' : ''} aria-label="Selecionar ${esc(p.nome)}"></td>
-          <td><div class="peca-cell">${p.fotos?.length ? `<button type="button" class="thumb-btn" data-fotos="${p.id}" aria-label="Ver fotos de ${esc(p.nome)}"><img class="thumb" src="${esc(p.fotos[0].url)}" alt="" loading="lazy" onerror="this.parentElement.remove()"></button>` : ''}<span><strong>${esc(p.nome)}</strong>${p.cor ? `<span class="sub">${esc(uniqJoin(p.cor))}</span>` : ''}</span></div></td>
+          <td><div class="peca-cell">${p.fotos?.length ? `<button type="button" class="thumb-btn" data-fotos="${p.id}" aria-label="Ver ${p.fotos.length} ${p.fotos.length === 1 ? 'foto' : 'fotos'} de ${esc(p.nome)}"><img class="thumb" src="${esc(p.fotos[0].url)}" alt="" loading="lazy" onerror="this.parentElement.remove()">${p.fotos.length > 1 ? `<span class="thumb-count">${p.fotos.length}</span>` : ''}</button>` : ''}<span><strong>${esc(p.nome)}</strong>${p.cor ? `<span class="sub">${esc(uniqJoin(p.cor))}</span>` : ''}</span></div></td>
           <td data-l="Tam.">${esc(uniqJoin(p.tamanho)) || '–'}</td>
           <td class="num" data-l="Qtd."><span>${p.quantidade}${low ? '<span class="tag">baixo</span>' : ''}</span></td>
           <td class="num" data-l="Compra">${money(p.preco_comprado_unitario)}</td>
@@ -323,9 +323,9 @@ function addGradeRow(r = { cor: '', tam: '', qtd: 1 }) {
     const n = $('#gradeRows').children.length + 1;
     const row = document.createElement('div');
     row.className = 'grade-row';
-    row.innerHTML = `<input class="g-cor" list="colorList" aria-label="Cor, linha ${n}" value="${esc(r.cor)}">
-      <input class="g-tam" list="sizeList" aria-label="Tamanho, linha ${n}" value="${esc(r.tam)}">
-      <input class="g-qtd" type="number" min="1" inputmode="numeric" aria-label="Quantidade, linha ${n}" value="${r.qtd}">
+    row.innerHTML = `<input class="g-cor" list="colorList" placeholder="Cor" aria-label="Cor, linha ${n}" value="${esc(r.cor)}">
+      <input class="g-tam" list="sizeList" placeholder="Tamanho" aria-label="Tamanho, linha ${n}" value="${esc(r.tam)}">
+      <input class="g-qtd" type="number" min="1" inputmode="numeric" placeholder="Qtd." aria-label="Quantidade, linha ${n}" value="${r.qtd}">
       <button type="button" class="btn-link g-del" aria-label="Remover linha ${n}">Remover</button>`;
     $('#gradeRows').append(row);
     updateGrade();
@@ -425,10 +425,13 @@ function renderFotos() {
         ...fotoEdit.add.map((f, i) => `<figure class="new"><img src="${f.preview}" alt="" data-ver="${kept.length + i}"><button type="button" class="btn-link" data-foto-new="${i}" aria-label="Remover foto nova">Remover</button></figure>`),
     ].join('');
     const total = kept.length + fotoEdit.add.length;
-    $('#fFotoInput').disabled = total >= MAX_FOTOS;
-    $('#fFotoInput').closest('label').classList.toggle('disabled', total >= MAX_FOTOS);
+    for (const input of document.querySelectorAll('.foto-input')) {
+        input.disabled = total >= MAX_FOTOS;
+        input.closest('label').classList.toggle('disabled', total >= MAX_FOTOS);
+    }
+    $('#fFotosHint').textContent = total >= MAX_FOTOS ? `Esta peça já tem ${MAX_FOTOS} fotos, o máximo.` : `${total} de ${MAX_FOTOS} fotos. Viram WebP, mais leves, e vão junto para o produto na Nuvemshop.`;
 }
-$('#fFotoInput').onchange = e => {
+const addFotos = e => {
     const room = MAX_FOTOS - (fotoEdit.saved.length - fotoEdit.remove.size) - fotoEdit.add.length;
     const files = [...e.target.files].filter(f => f.type.startsWith('image/'));
     if (files.length > room) $('#pecaMsg').textContent = `Só cabem mais ${room} ${room === 1 ? 'foto' : 'fotos'} nesta peça; as outras ficaram de fora.`;
@@ -436,6 +439,7 @@ $('#fFotoInput').onchange = e => {
     e.target.value = '';
     renderFotos();
 };
+$('#fFotoInput').onchange = $('#fFotoCam').onchange = addFotos;
 $('#fFotos').onclick = e => {
     const { fotoDel, fotoNew, ver } = e.target.dataset;
     if (ver !== undefined) {
@@ -446,35 +450,103 @@ $('#fFotos').onclick = e => {
     if (fotoNew !== undefined) { URL.revokeObjectURL(fotoEdit.add[fotoNew].preview); fotoEdit.add.splice(+fotoNew, 1); }
     renderFotos();
 };
-// Full-screen viewer: arrows, buttons or a swipe change photo; Esc, ✕ or a tap outside the photo closes.
-const viewer = { urls: [], i: 0 };
-function showPhoto() {
-    const n = viewer.urls.length;
-    $('#vImg').src = viewer.urls[viewer.i];
-    $('#vCount').textContent = n > 1 ? `${viewer.i + 1} de ${n}` : '';
-    $('#vPrev').hidden = $('#vNext').hidden = n < 2;
+// Full-screen viewer. Change photo: arrows, ‹ ›, a swipe or the strip. Zoom: double tap/click or pinch, then drag.
+// Close: Esc, ✕ or a single tap outside the photo.
+const viewer = { urls: [], i: 0, nome: '', z: 1, x: 0, y: 0 };
+const motionOK = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
+function applyZoom() {
+    $('#vImg').style.transform = viewer.z === 1 ? '' : `translate(${viewer.x}px, ${viewer.y}px) scale(${viewer.z})`;
+    $('#viewer').classList.toggle('zoomed', viewer.z > 1);
+}
+function resetZoom() { Object.assign(viewer, { z: 1, x: 0, y: 0 }); applyZoom(); $('#vImg').style.transformOrigin = ''; }
+function zoomAt(cx, cy, z) {
+    if (viewer.z === 1) { // zoom towards the point that was touched
+        const r = $('#vImg').getBoundingClientRect();
+        $('#vImg').style.transformOrigin = `${(cx - r.left) / r.width * 100}% ${(cy - r.top) / r.height * 100}%`;
+        viewer.x = viewer.y = 0;
+    }
+    viewer.z = z; applyZoom();
+}
+function showPhoto(dir = 0) {
+    resetZoom();
+    const { urls, i } = viewer, img = $('#vImg');
+    img.src = urls[i];
+    if (dir && motionOK()) img.animate([{ transform: `translateX(${dir * 10}%)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 260, easing: 'cubic-bezier(.2,.7,.2,1)' });
+    $('#vTitle').textContent = urls.length > 1 ? `${viewer.nome}, foto ${i + 1} de ${urls.length}` : viewer.nome;
+    $('#vPrev').hidden = $('#vNext').hidden = $('#vStrip').hidden = urls.length < 2;
+    $('#vStrip').querySelectorAll('button').forEach((b, k) => b.setAttribute('aria-current', k === i));
+    $('#vStrip').querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: motionOK() ? 'smooth' : 'auto' });
+    for (const k of [i - 1, i + 1]) if (urls[k]) new Image().src = urls[k]; // the next photo is ready before the swipe
 }
 function openViewer(urls, i, nome) {
     if (!urls.length) return;
-    Object.assign(viewer, { urls, i });
-    $('#vImg').alt = nome ? `Foto de ${nome}` : 'Foto da peça';
-    showPhoto();
+    Object.assign(viewer, { urls, i, nome: nome || 'Foto da peça' });
+    $('#vImg').alt = `Foto de ${viewer.nome}`;
+    $('#vStrip').innerHTML = urls.map((u, k) => `<button type="button" data-i="${k}" aria-label="Foto ${k + 1}"><img src="${esc(u)}" alt=""></button>`).join('');
     $('#viewer').showModal();
+    if (motionOK()) $('#viewer').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180 });
+    showPhoto();
 }
-const stepPhoto = d => { viewer.i = (viewer.i + d + viewer.urls.length) % viewer.urls.length; showPhoto(); };
+const stepPhoto = d => { if (viewer.urls.length < 2) return; viewer.i = (viewer.i + d + viewer.urls.length) % viewer.urls.length; showPhoto(d); };
 $('#vPrev').onclick = () => stepPhoto(-1);
 $('#vNext').onclick = () => stepPhoto(1);
 $('#vClose').onclick = () => $('#viewer').close();
-$('#viewer').onclick = e => { if (e.target.id === 'viewer') $('#viewer').close(); }; // tap on the dark area around the photo
+$('#vStrip').onclick = e => {
+    const b = e.target.closest('[data-i]');
+    if (b && +b.dataset.i !== viewer.i) { const d = +b.dataset.i > viewer.i ? 1 : -1; viewer.i = +b.dataset.i; showPhoto(d); }
+};
 $('#viewer').onkeydown = e => { if (e.key === 'ArrowLeft') stepPhoto(-1); if (e.key === 'ArrowRight') stepPhoto(1); };
-let swipeX = null;
-$('#viewer').addEventListener('touchstart', e => { swipeX = e.touches[0].clientX; }, { passive: true });
-$('#viewer').addEventListener('touchend', e => {
-    if (swipeX === null || viewer.urls.length < 2) return;
-    const dx = e.changedTouches[0].clientX - swipeX;
-    if (Math.abs(dx) > 50) stepPhoto(dx < 0 ? 1 : -1);
-    swipeX = null;
-});
+$('#viewer').addEventListener('close', resetZoom);
+{
+    // One set of pointer handlers for mouse, finger and pen: swipe, drag, pinch, double tap.
+    const stage = $('#vStage'), pts = new Map();
+    let g = null, lastTap = { t: 0, x: 0, y: 0 };
+    stage.addEventListener('pointerdown', e => {
+        if (e.target.closest('.v-btn')) return;
+        pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        stage.setPointerCapture(e.pointerId);
+        if (pts.size === 2) {
+            const [a, b] = [...pts.values()];
+            g = { pinch: Math.hypot(a.x - b.x, a.y - b.y), z: viewer.z, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+        } else g = { sx: e.clientX, sy: e.clientY, x: viewer.x, y: viewer.y, moved: false, onImg: e.target.id === 'vImg' };
+        stage.classList.add('dragging');
+    });
+    stage.addEventListener('pointermove', e => {
+        if (!g || !pts.has(e.pointerId)) return;
+        pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (g.pinch) {
+            if (pts.size < 2) return;
+            const [a, b] = [...pts.values()];
+            const z = Math.min(4, Math.max(1, g.z * Math.hypot(a.x - b.x, a.y - b.y) / g.pinch));
+            if (viewer.z === 1 && z > 1) zoomAt(g.cx, g.cy, z);
+            else if (z === 1) resetZoom();
+            else { viewer.z = z; applyZoom(); }
+            return;
+        }
+        const dx = e.clientX - g.sx, dy = e.clientY - g.sy;
+        if (Math.abs(dx) + Math.abs(dy) > 8) g.moved = true;
+        if (viewer.z > 1) { viewer.x = g.x + dx; viewer.y = g.y + dy; applyZoom(); }
+    });
+    const end = e => {
+        if (!pts.delete(e.pointerId) || pts.size) return; // wait for the last finger
+        stage.classList.remove('dragging');
+        const gest = g; g = null;
+        if (!gest || gest.pinch || e.type === 'pointercancel') return;
+        const dx = e.clientX - gest.sx;
+        if (gest.moved) { if (viewer.z === 1 && Math.abs(dx) > 50) stepPhoto(dx < 0 ? 1 : -1); return; }
+        const now = Date.now();
+        if (now - lastTap.t < 320 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 40) {
+            lastTap.t = 0;
+            viewer.z > 1 ? resetZoom() : zoomAt(e.clientX, e.clientY, 2.5);
+            return;
+        }
+        lastTap = { t: now, x: e.clientX, y: e.clientY };
+        // A single tap outside the photo closes, after a short wait in case it becomes a double tap.
+        if (!gest.onImg && viewer.z === 1) setTimeout(() => { if (lastTap.t === now) $('#viewer').close(); }, 330);
+    };
+    stage.addEventListener('pointerup', end);
+    stage.addEventListener('pointercancel', end);
+}
 
 // Shrinks the photo before sending (phone photos are several MB; Vercel accepts at most 4.5 MB per request).
 // The server turns whatever arrives into WebP, so the browser only needs to make it small.

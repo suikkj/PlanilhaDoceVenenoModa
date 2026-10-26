@@ -73,7 +73,7 @@ button:disabled { opacity: .6; cursor: wait; }
 @media (max-width: 760px) {
     .auth { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
     .auth-brand { padding: 2rem; }
-    .auth-brand img { width: 220px; }
+    .auth-brand img { width: min(220px, 100%); }
     .auth-form { align-self: start; padding: 2rem 0; }
     .auth .theme-btn { color: #e9ece4; border-color: rgb(255 255 255 / .35); }
 }
@@ -116,7 +116,9 @@ button:disabled { opacity: .6; cursor: wait; }
 
 /* ---------- Toolbar ---------- */
 .toolbar { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: center; margin-bottom: 1rem; }
-.toolbar input[type=search] { flex: 1 1 240px; width: auto; }
+.toolbar input[type=search] { flex: 1 1 240px; width: auto; min-width: 0; }
+.toolbar > * { max-width: 100%; }
+.toolbar select { min-width: 0; }
 .toolbar select { width: auto; flex: 0 0 auto; }
 .toolbar-end { justify-content: flex-end; margin-bottom: .75rem; }
 .check { display: flex; align-items: center; gap: .45rem; color: var(--ink); font-size: 1rem; cursor: pointer; }
@@ -153,9 +155,11 @@ button:disabled { opacity: .6; cursor: wait; }
 /* Phones: rows become stacked cards */
 @media (max-width: 720px) {
     .grid thead { display: none; }
-    .grid tr { display: grid; grid-template-columns: auto 1fr auto; gap: .1rem .75rem; padding: .8rem; border-bottom: 1px solid var(--line); }
+    .grid tr { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: .1rem .75rem; padding: .8rem; border-bottom: 1px solid var(--line); }
     .grid td { border: 0; padding: 0; }
-    .grid td[data-l] { grid-column: 2; font-size: .9rem; display: flex; justify-content: space-between; gap: 1rem; }
+    .grid td[data-l] { grid-column: 2; font-size: .9rem; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 1rem; min-width: 0; }
+    .grid td { min-width: 0; overflow-wrap: anywhere; }
+    .grid .num { white-space: normal; }
     .grid td[data-l]::before { content: attr(data-l); color: var(--muted); }
     .grid .num { text-align: left; }
     .grid .row-actions { grid-column: 1 / -1; text-align: left; margin-top: .4rem; }
@@ -200,7 +204,7 @@ dialog h2 { margin: 0; font-size: 1.9rem; }
 dialog { background: var(--surface); }
 .fields { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
 .fields .wide { grid-column: 1 / -1; }
-@media (max-width: 480px) { .fields { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .fields { grid-template-columns: minmax(0, 1fr); } }
 .hint { margin: 0; color: var(--muted); font-size: .9rem; min-height: 1.35em; }
 .sell-total { margin: 0; font-family: var(--display); font-size: 2.4rem; font-weight: 500; font-variant-numeric: lining-nums; font-variant-numeric: tabular-nums; }
 .sell-total small { font-size: 1rem; color: var(--muted); font-weight: 400; }
@@ -300,6 +304,7 @@ dialog.wide-dialog { width: min(760px, 100% - 2rem); }
 @media (max-width: 720px) {
     .topbar { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); }
     .view { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); }
+    .band { margin-inline: calc(-1 * max(1rem, env(safe-area-inset-left))) calc(-1 * max(1rem, env(safe-area-inset-right))); padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right)); }
 }
 
 .app-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem;
@@ -325,15 +330,79 @@ dialog.wide-dialog { width: min(760px, 100% - 2rem); }
 .thumb-btn { padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 4px; flex: none; display: flex; }
 .fotos-grid img { cursor: zoom-in; }
 dialog.viewer { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border-radius: 0;
-    background: rgb(10 14 9 / .97); box-shadow: none; overflow: hidden; }
-dialog.viewer[open] { display: grid; place-items: center; }
+    background: rgb(10 14 9 / .97); box-shadow: none; overflow: hidden; color: #e9ece4; }
+dialog.viewer[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 dialog.viewer::backdrop { background: rgb(10 14 9 / .97); }
-#vImg { max-width: calc(100% - 2rem); max-height: calc(100% - 7rem); object-fit: contain; border-radius: 4px; user-select: none; }
-.v-btn { position: absolute; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 999px; border: 0; cursor: pointer;
+.v-top { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: max(.75rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) .5rem max(1rem, env(safe-area-inset-left)); }
+.v-title { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.v-stage { position: relative; display: grid; place-items: center; overflow: hidden; touch-action: none; min-height: 0; }
+#vImg { max-width: calc(100% - 2rem); max-height: calc(100% - 1rem); object-fit: contain; border-radius: 4px; user-select: none;
+    -webkit-user-select: none; -webkit-touch-callout: none; cursor: zoom-in; transition: transform .22s cubic-bezier(.2,.7,.2,1); }
+.viewer.zoomed #vImg { cursor: grab; }
+.v-stage.dragging #vImg { transition: none; }
+.v-btn { display: grid; place-items: center; width: 48px; height: 48px; flex: none; border-radius: 999px; border: 0; cursor: pointer;
     background: rgb(255 255 255 / .14); color: #fff; font-size: 1.6rem; line-height: 1; }
 .v-btn:hover { background: rgb(255 255 255 / .26); }
 .v-btn[hidden] { display: none; }
-.v-close { top: max(1rem, env(safe-area-inset-top)); right: max(1rem, env(safe-area-inset-right)); font-size: 1.2rem; }
-.v-prev { left: max(1rem, env(safe-area-inset-left)); top: 50%; transform: translateY(-50%); }
-.v-next { right: max(1rem, env(safe-area-inset-right)); top: 50%; transform: translateY(-50%); }
-.v-count { position: absolute; bottom: max(1rem, env(safe-area-inset-bottom)); left: 0; right: 0; margin: 0; text-align: center; color: #e9ece4; font-size: .95rem; }
+#vClose { font-size: 1.2rem; }
+.v-prev, .v-next { position: absolute; top: 50%; transform: translateY(-50%); }
+.v-prev { left: max(1rem, env(safe-area-inset-left)); }
+.v-next { right: max(1rem, env(safe-area-inset-right)); }
+.viewer.zoomed .v-prev, .viewer.zoomed .v-next { opacity: 0; pointer-events: none; }
+.v-strip { display: flex; gap: .5rem; overflow-x: auto; padding: .75rem max(1rem, env(safe-area-inset-right)) max(.9rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); }
+.v-strip[hidden] { display: none; }
+.v-strip button:first-child { margin-left: auto; }
+.v-strip button:last-child { margin-right: auto; } /* centred while it fits, scrollable when it doesn't */
+.v-strip button { flex: none; width: 56px; height: 72px; padding: 0; border: 2px solid transparent; border-radius: 6px; overflow: hidden; background: none; opacity: .55; cursor: pointer; transition: opacity .15s, border-color .15s; }
+.v-strip button[aria-current="true"] { border-color: var(--copper); opacity: 1; }
+.v-strip img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-btn { position: relative; }
+.thumb-count { position: absolute; right: -6px; bottom: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px;
+    background: var(--copper); color: #1a2416; font-size: .72rem; font-weight: 600; display: grid; place-items: center; }
+@media (prefers-reduced-motion: reduce) { #vImg, .v-strip button { transition: none; } }
+
+/* ---------- Celular e letra grande ----------
+   With the largest text size, Safari leaves about half the usual width: everything stacks in one column,
+   text wraps instead of running off the screen, and the save buttons stay on screen. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+.foto-btns { display: flex; flex-wrap: wrap; gap: .6rem; }
+.foto-btns .foto-add { justify-self: auto; }
+@media (pointer: fine) { .foto-cam { display: none; } } /* computers have no camera button: the gallery picker is enough */
+@media (max-width: 720px) {
+    .btn { white-space: normal; text-align: center; }
+    #pecaDialog, #sellDialog, #bulkDialog { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; border-radius: 0; overflow-y: auto; overscroll-behavior: contain; }
+    #pecaDialog form, #sellDialog form, #bulkDialog form { min-height: 100%; align-content: start;
+        padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left)); }
+    #pecaDialog .actions, #sellDialog .actions, #bulkDialog .actions {
+        position: sticky; bottom: 0; z-index: 1; margin: auto calc(-1 * max(1rem, env(safe-area-inset-right))) 0 calc(-1 * max(1rem, env(safe-area-inset-left)));
+        padding: .5rem max(1rem, env(safe-area-inset-right)) max(.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+        background: var(--surface); border-top: 1px solid var(--line); }
+    .actions { min-width: 0; }
+    #pecaDialog form > *, #sellDialog form > *, #bulkDialog form > * { min-width: 0; }
+    .actions .btn { flex: 1 1 0; min-width: 0; min-height: 2.75rem; padding: .35rem .5rem; }
+    /* big letters: Salvar gets its own full-width row on top, the rest share the row below */
+    .actions .btn-primary { order: -1; flex-basis: 100%; }
+    .fields { grid-template-columns: minmax(0, 1fr); }
+    .grade-head { display: none; }
+    .grade-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "cor cor" "tam qtd" "del del";
+        border: 1px solid var(--line); border-radius: var(--radius); padding: .6rem; }
+    .g-cor { grid-area: cor; } .g-tam { grid-area: tam; } .g-qtd { grid-area: qtd; }
+    .g-del { grid-area: del; justify-self: end; }
+    .g-del[hidden] { display: none !important; }
+    .grade-foot { flex-wrap: wrap; }
+    .foto-btns .foto-add { flex: 1 1 10rem; min-width: 0; max-width: 100%; justify-content: center; white-space: normal; text-align: center; }
+    .fotos-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+    .fotos-grid .btn-link { min-height: 44px; width: 100%; justify-content: center; border: 1px solid var(--line); border-radius: var(--radius); text-decoration: none; }
+    .bulk-item { grid-template-columns: minmax(0, 1fr); }
+    .sell-total { font-size: 2rem; overflow-wrap: anywhere; }
+    .band { gap: 1rem 2rem; }
+    .figure span { overflow-wrap: anywhere; }
+    .tabs { flex-wrap: nowrap; }
+    .auth-links { flex-direction: column; align-items: flex-start; }
+    .toolbar select { flex: 1 1 12rem; }
+}
+@media (max-width: 360px) {
+    .grade-row { grid-template-areas: "cor cor" "tam tam" "qtd qtd" "del del"; }
+    .fotos-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
