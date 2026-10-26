@@ -75,6 +75,7 @@ button:disabled { opacity: .6; cursor: wait; }
     .auth-brand { padding: 2rem; }
     .auth-brand img { width: 220px; }
     .auth-form { align-self: start; padding: 2rem 0; }
+    .auth .theme-btn { color: #e9ece4; border-color: rgb(255 255 255 / .35); }
 }
 
 /* ---------- Header + green band (the one bold element) ---------- */
@@ -105,7 +106,10 @@ button:disabled { opacity: .6; cursor: wait; }
 .figure { display: grid; }
 .figure span { font-family: var(--display); font-size: clamp(2rem, 4.2vw, 3.1rem); font-weight: 500; font-variant-numeric: lining-nums; color: var(--copper); line-height: 1.1; font-variant-numeric: tabular-nums; }
 .figure small { color: #d9e2d2; font-size: .9rem; }
-.band .btn-copper { margin-left: auto; }
+.band-actions { margin-left: auto; display: flex; flex-wrap: wrap; gap: .6rem; }
+.btn-band { background: transparent; color: #e9ece4; border: 1px solid rgb(255 255 255 / .35); }
+.btn-band:hover { border-color: rgb(255 255 255 / .7); color: #fff; }
+.band > .btn-copper { margin-left: auto; }
 .month-pick select { background: transparent; color: #fff; border-color: rgb(255 255 255 / .35); font-size: 1.2rem; width: auto; }
 .month-pick option { color: var(--ink); }
 @media (min-width: 1248px) { .band { margin-inline: calc(576px - 50vw); padding-inline: calc(50vw - 576px); } }
@@ -155,7 +159,8 @@ button:disabled { opacity: .6; cursor: wait; }
     .grid .num { text-align: left; }
     .grid .row-actions { grid-column: 1 / -1; text-align: left; margin-top: .4rem; }
     #salesTable td:first-child { grid-column: 1 / -1; font-size: .85rem; color: var(--muted); }
-    .band .btn-copper { margin-left: 0; width: 100%; }
+    .band > .btn-copper, .band-actions { margin-left: 0; width: 100%; }
+    .band-actions .btn { flex: 1 1 auto; }
     .topbar { flex-wrap: wrap; gap: .3rem 1rem; padding: .4rem 1rem; }
     .topbar-logo { height: 40px; }
     .theme-btn { margin-left: auto; }
@@ -226,6 +231,31 @@ dialog .fields .full { grid-column: 1 / -1; }
 .rank li span { display: block; font-weight: 500; overflow-wrap: anywhere; }
 .rank li small { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
 .band .btn-copper:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------- Login extras ---------- */
+.field { display: grid; gap: .3rem; }
+.field > label { font-size: .9rem; color: var(--muted); }
+.pw { position: relative; }
+.pw input { padding-right: 5.5rem; }
+.pw-toggle { position: absolute; top: 50%; right: .35rem; transform: translateY(-50%); background: none; border: 0; color: var(--link); padding: .35rem .55rem; border-radius: var(--radius); cursor: pointer; font-size: .9rem; }
+.pw-toggle:hover { background: var(--hover); }
+.auth-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .4rem 1rem; }
+.auth-links .btn-link { padding-left: 0; }
+.auth-form .form-msg:not(:empty) { color: var(--ink); background: var(--low); border-radius: var(--radius); padding: .55rem .75rem; }
+
+/* ---------- Venda em lote e avisos ---------- */
+dialog.wide-dialog { width: min(760px, 100% - 2rem); }
+.bulk-items { display: grid; gap: .6rem; max-height: 45vh; overflow-y: auto; padding-right: .2rem; }
+.bulk-item { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) 5rem; gap: .5rem .75rem; align-items: end;
+    border: 1px solid var(--line); border-radius: var(--radius); padding: .7rem .8rem; }
+.bulk-name { margin: 0; align-self: center; min-width: 0; }
+.bulk-name strong { display: block; overflow-wrap: anywhere; }
+.bulk-name small { color: var(--muted); font-size: .85rem; }
+@media (max-width: 640px) {
+    .bulk-item { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 4.5rem; }
+    .bulk-name { grid-column: 1 / -1; }
+}
+.temp-pw { font-family: ui-monospace, Consolas, monospace; font-size: 1.6rem; letter-spacing: .08em; background: var(--hover); border-radius: var(--radius); padding: .6rem .9rem; margin: 0; user-select: all; text-align: center; }
 
 .toast {
     position: fixed; left: 50%; bottom: 1.5rem; transform: translate(-50%, 1rem); opacity: 0; pointer-events: none;

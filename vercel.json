@@ -4,13 +4,23 @@
     {
       "src": "server.js",
       "use": "@vercel/node",
-      "config": { "includeFiles": ["public/**"] }
+      "config": {
+        "includeFiles": [
+          "public/**"
+        ]
+      }
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
       "dest": "server.js"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/backup",
+      "schedule": "0 10 * * 1"
     }
   ]
 }

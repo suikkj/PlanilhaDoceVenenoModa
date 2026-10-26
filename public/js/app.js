@@ -50,36 +50,76 @@ function confirmAction(title, text, okLabel) {
 }
 
 // ---------- Auth ----------
-let registering = false;
+// Modes: login, register, forgot (ask for the reset email), reset (new password from an emailed link).
+let authMode = 'login';
+const resetToken = new URLSearchParams(location.search).get('reset');
+const AUTH = {
+    login: { title: 'Entrar', submit: 'Entrar', toggle: 'Não tem conta? Criar conta', pw: 'Senha', ac: 'current-password' },
+    register: { title: 'Criar conta', submit: 'Criar conta', toggle: 'Já tem conta? Entrar', pw: 'Senha', ac: 'new-password' },
+    forgot: { title: 'Esqueci minha senha', submit: 'Enviar link', toggle: 'Lembrei a senha. Entrar',
+        hint: 'Informe seu email. Vamos enviar um link para você criar uma nova senha.' },
+    reset: { title: 'Criar nova senha', submit: 'Salvar nova senha', toggle: 'Voltar para entrar', pw: 'Nova senha', ac: 'new-password',
+        hint: 'Escolha uma senha com pelo menos 6 caracteres.' },
+};
+function setAuthMode(mode, keepMsg) {
+    authMode = mode;
+    const m = AUTH[mode];
+    $('#authTitle').textContent = m.title;
+    $('#authSubmit').textContent = m.submit;
+    $('#authToggle').textContent = m.toggle;
+    $('#authHint').hidden = !m.hint;
+    $('#authHint').textContent = m.hint || '';
+    $('#authEmailField').hidden = mode === 'reset';
+    $('#authPwField').hidden = mode === 'forgot';
+    $('#forgotLink').hidden = mode !== 'login';
+    if (m.pw) { $('#authPwLabel').textContent = m.pw; $('#authPassword').autocomplete = m.ac; }
+    if (!keepMsg) $('#authMsg').textContent = '';
+}
 function showAuth() {
     $('#appView').hidden = true;
     $('#authView').hidden = false;
-    $('#authEmail').focus();
+    setAuthMode(resetToken ? 'reset' : 'login');
+    (resetToken ? $('#authPassword') : $('#authEmail')).focus();
 }
 function logout() {
     localStorage.removeItem('accessToken');
     showAuth();
 }
 $('#authToggle').onclick = () => {
-    registering = !registering;
-    $('#authTitle').textContent = registering ? 'Criar conta' : 'Entrar';
-    $('#authSubmit').textContent = registering ? 'Criar conta' : 'Entrar';
-    $('#authToggle').textContent = registering ? 'Já tem conta? Entrar' : 'Não tem conta? Criar conta';
-    $('#authPassword').autocomplete = registering ? 'new-password' : 'current-password';
-    $('#authMsg').textContent = '';
+    if (authMode === 'reset') history.replaceState(null, '', location.pathname); // leave the reset link behind
+    setAuthMode(authMode === 'login' ? 'register' : 'login');
+};
+$('#forgotLink').onclick = () => { setAuthMode('forgot'); $('#authEmail').focus(); };
+$('#pwToggle').onclick = () => {
+    const show = $('#authPassword').type === 'password';
+    $('#authPassword').type = show ? 'text' : 'password';
+    $('#pwToggle').textContent = show ? 'Ocultar' : 'Mostrar';
+    $('#pwToggle').setAttribute('aria-pressed', show);
+    $('#authPassword').focus();
 };
 $('#authForm').onsubmit = async e => {
     e.preventDefault();
     const msg = $('#authMsg');
     const email = $('#authEmail').value.trim(), password = $('#authPassword').value;
-    if (!email || password.length < 6) { msg.textContent = 'Informe o email e uma senha com pelo menos 6 caracteres.'; return; }
+    if (authMode !== 'reset' && !email) { msg.textContent = 'Informe seu email.'; return; }
+    if (authMode !== 'forgot' && password.length < 6) { msg.textContent = 'A senha precisa ter pelo menos 6 caracteres.'; return; }
     $('#authSubmit').disabled = true;
     try {
-        if (registering) {
+        if (authMode === 'register') {
             const r = await api('/auth/register', { method: 'POST', body: { email, password } });
+            setAuthMode('login');
             msg.textContent = r.message;
-            $('#authToggle').click();
+        } else if (authMode === 'forgot') {
+            const r = await api('/auth/forgot', { method: 'POST', body: { email } });
+            setAuthMode('login', true);
             msg.textContent = r.message;
+        } else if (authMode === 'reset') {
+            const r = await api('/auth/reset', { method: 'POST', body: { token: resetToken, password } });
+            history.replaceState(null, '', location.pathname);
+            $('#authPassword').value = '';
+            setAuthMode('login');
+            msg.textContent = r.message;
+            $('#authEmail').focus();
         } else {
             const r = await api('/auth/login', { method: 'POST', body: { email, password } });
             localStorage.setItem('accessToken', r.accessToken);
@@ -353,26 +393,36 @@ function fillSelect(sel, values, keep) {
     if (uniq.includes(keep)) sel.value = keep;
     sel.closest('label').hidden = uniq.length === 0 || (uniq.length === 1 && !uniq[0]);
 }
+const initVariant = (el, stock) => {
+    fillSelect(el.querySelector('.v-cor'), stock.paired ? stock.units.map(u => u.cor) : stock.c);
+    fillSelect(el.querySelector('.v-tam'), stock.paired ? stock.units.map(u => u.tam) : stock.t);
+};
+// Keeps one piece's color/size/quantity inputs consistent; shared by the single and the bulk sale.
+function syncVariant(el, p, stock) {
+    const cor = el.querySelector('.v-cor'), tam = el.querySelector('.v-tam'), qtd = el.querySelector('.v-qtd');
+    if (stock.paired) fillSelect(tam, stock.units.filter(u => u.cor === cor.value).map(u => u.tam), tam.value);
+    const max = available(stock, cor.value, tam.value, p.quantidade);
+    qtd.max = max;
+    if (+qtd.value > max) qtd.value = max;
+    return { cor: cor.value, tam: tam.value, q: parseInt(qtd.value, 10) || 0, max };
+}
 function updateVariant() {
-    const s = sellStock, p = selling, cor = $('#sCor').value;
-    if (s.paired) fillSelect($('#sTam'), s.units.filter(u => u.cor === cor).map(u => u.tam), $('#sTam').value);
-    const max = available(s, cor, $('#sTam').value, p.quantidade);
-    $('#sQtd').max = max;
-    if (+$('#sQtd').value > max) $('#sQtd').value = max;
-    const desc = [cor, $('#sTam').value].filter(Boolean).join(', ');
-    $('#sInfo').textContent = `${max} ${max === 1 ? 'unidade' : 'unidades'}${desc ? ` em ${desc}` : ''} a ${money(p.preco_venda)}.`;
+    const v = syncVariant($('#sellForm'), selling, sellStock);
+    const desc = [v.cor, v.tam].filter(Boolean).join(', ');
+    $('#sInfo').textContent = `${v.max} ${v.max === 1 ? 'unidade' : 'unidades'}${desc ? ` em ${desc}` : ''} a ${money(selling.preco_venda)}.`;
     updateSell();
 }
 $('#sCor').onchange = $('#sTam').onchange = updateVariant;
 // Returning customer: fill in the phone used last time.
-$('#sCli').onchange = () => {
-    const last = sold().find(x => x.cliente_nome === $('#sCli').value.trim() && x.cliente_telefone);
-    if (last && !$('#sTel').value) $('#sTel').value = last.cliente_telefone;
+const fillPhone = (nome, tel) => () => {
+    const last = sold().find(x => x.cliente_nome === nome.value.trim() && x.cliente_telefone);
+    if (last && !tel.value) tel.value = last.cliente_telefone;
 };
+$('#sCli').onchange = fillPhone($('#sCli'), $('#sTel'));
+const discount = el => Math.min(100, Math.max(0, parseFloat(el.value) || 0));
+const unitPrice = (p, desc) => +(p.preco_venda * (1 - desc / 100)).toFixed(2);
 function sellNumbers() {
-    const q = parseInt($('#sQtd').value, 10) || 0;
-    const desc = Math.min(100, Math.max(0, parseFloat($('#sDesc').value) || 0));
-    const unit = +(selling.preco_venda * (1 - desc / 100)).toFixed(2);
+    const q = parseInt($('#sQtd').value, 10) || 0, desc = discount($('#sDesc')), unit = unitPrice(selling, desc);
     return { q, desc, unit, total: unit * q, lucro: +((unit - selling.preco_comprado_unitario) * q).toFixed(2) };
 }
 function updateSell() {
@@ -381,20 +431,38 @@ function updateSell() {
     $('#sLucro').textContent = `lucro ${money(n.lucro)}`;
 }
 $('#sQtd').oninput = $('#sDesc').oninput = updateSell;
+
+// Optional sale fields (payment, customer) for the single and the bulk dialog.
+function prepareSaleFields(pay, cli, tel) {
+    pay.value = ''; cli.value = tel.value = '';
+    pay.closest('label').hidden = !hasCol('forma_pagamento');
+    cli.closest('label').hidden = tel.closest('label').hidden = !hasCol('cliente_nome');
+    $('#clienteList').innerHTML = uniq(sold().map(x => x.cliente_nome).filter(Boolean)).map(c => `<option value="${esc(c)}">`).join('');
+}
+const saleFields = (pay, cli, tel) => ({
+    ...(hasCol('forma_pagamento') && { forma_pagamento: pay.value || null }),
+    ...(hasCol('cliente_nome') && { cliente_nome: cli.value.trim() || null, cliente_telefone: tel.value.trim() || null }),
+});
+// Registers the sale of q units of one color/size of piece p.
+async function registerSale(p, stock, cor, tam, q, desc, data_venda, extra) {
+    const unit = unitPrice(p, desc);
+    const sale = { status: 'vendida', data_venda, desconto: desc, preco_venda: unit, lucro: +((unit - p.preco_comprado_unitario) * q).toFixed(2),
+        quantidade: q, cor: cor || null, tamanho: tam || null, ...extra, ...(hasCol('fornecedor') && { fornecedor: p.fornecedor ?? null }) };
+    if (q === p.quantidade) return api('/pecas/' + p.id, { method: 'PUT', body: sale });
+    // Partial sale: create the sold row first, so a failure never loses stock.
+    await api('/pecas', { method: 'POST', body: { nome: p.nome, data_compra: p.data_compra, preco_comprado_unitario: p.preco_comprado_unitario, ...sale } });
+    await api('/pecas/' + p.id, { method: 'PUT', body: { quantidade: p.quantidade - q, ...afterSale(stock, cor, tam, q) } });
+}
+
 function openSell(p) {
     selling = p;
     $('#sNome').textContent = p.nome;
     sellStock = stockUnits(p);
-    fillSelect($('#sCor'), sellStock.paired ? sellStock.units.map(u => u.cor) : sellStock.c);
-    fillSelect($('#sTam'), sellStock.paired ? sellStock.units.map(u => u.tam) : sellStock.t);
+    initVariant($('#sellForm'), sellStock);
     $('#sQtd').value = 1;
     $('#sDesc').value = 0;
     $('#sData').value = today();
-    $('#sPay').value = '';
-    $('#sCli').value = $('#sTel').value = '';
-    $('#sPayWrap').hidden = !hasCol('forma_pagamento');
-    $('#sCliWrap').hidden = $('#sTelWrap').hidden = !hasCol('cliente_nome');
-    $('#clienteList').innerHTML = uniq(sold().map(x => x.cliente_nome).filter(Boolean)).map(c => `<option value="${esc(c)}">`).join('');
+    prepareSaleFields($('#sPay'), $('#sCli'), $('#sTel'));
     $('#sellMsg').textContent = '';
     updateVariant();
     $('#sellDialog').showModal();
@@ -403,31 +471,67 @@ $('#sellForm').onsubmit = async e => {
     if (e.submitter?.value !== 'ok') return;
     e.preventDefault();
     const n = sellNumbers(), p = selling, data_venda = $('#sData').value;
-    const cor = $('#sCor').value, tam = $('#sTam').value, max = available(sellStock, cor, tam, p.quantidade);
-    if (n.q < 1 || n.q > max) { $('#sellMsg').textContent = max ? `Venda de 1 a ${max} unidades nessa cor e tamanho.` : 'Não há unidades nessa cor e tamanho.'; return; }
+    const v = syncVariant($('#sellForm'), p, sellStock);
+    if (n.q < 1 || n.q > v.max) { $('#sellMsg').textContent = v.max ? `Venda de 1 a ${v.max} unidades nessa cor e tamanho.` : 'Não há unidades nessa cor e tamanho.'; return; }
     if (!data_venda) { $('#sellMsg').textContent = 'Informe a data da venda.'; return; }
     $('#sellDialog').close();
-    const sale = { status: 'vendida', data_venda, desconto: n.desc, preco_venda: n.unit, lucro: n.lucro, quantidade: n.q, cor: cor || null, tamanho: tam || null };
-    if (hasCol('forma_pagamento')) sale.forma_pagamento = $('#sPay').value || null;
-    if (hasCol('cliente_nome')) Object.assign(sale, { cliente_nome: $('#sCli').value.trim() || null, cliente_telefone: $('#sTel').value.trim() || null });
-    if (hasCol('fornecedor')) sale.fornecedor = p.fornecedor ?? null;
-    const rest = afterSale(sellStock, cor, tam, n.q);
-    await run(async () => {
-        if (n.q === p.quantidade) return api('/pecas/' + p.id, { method: 'PUT', body: sale });
-        // Partial sale: create the sold row first, so a failure never loses stock.
-        await api('/pecas', { method: 'POST', body: { nome: p.nome, data_compra: p.data_compra, preco_comprado_unitario: p.preco_comprado_unitario, ...sale } });
-        await api('/pecas/' + p.id, { method: 'PUT', body: { quantidade: p.quantidade - n.q, ...rest } });
-    }, `Venda registrada: ${money(n.total)}.`);
+    await run(() => registerSale(p, sellStock, v.cor, v.tam, n.q, n.desc, data_venda, saleFields($('#sPay'), $('#sCli'), $('#sTel'))),
+        `Venda registrada: ${money(n.total)}.`);
 };
 
-$('#bulkSell').onclick = async () => {
+// Venda em lote: each selected piece gets its own color, size and quantity; date, discount, payment and customer are shared.
+let bulkItems = [];
+$('#bPay').innerHTML = $('#sPay').innerHTML;
+function updateBulk() {
+    const desc = discount($('#bDesc'));
+    let total = 0, lucro = 0;
+    for (const it of bulkItems) {
+        const v = syncVariant(it.el, it.p, it.stock), unit = unitPrice(it.p, desc);
+        it.el.querySelector('.bulk-left').textContent = `${v.max} ${v.max === 1 ? 'disponível' : 'disponíveis'}, ${money(unit)} cada`;
+        total += unit * v.q; lucro += (unit - it.p.preco_comprado_unitario) * v.q;
+    }
+    $('#bTotal').textContent = money(total);
+    $('#bLucro').textContent = `lucro ${money(lucro)}`;
+}
+$('#bulkSell').onclick = () => {
     const list = pecas.filter(p => selected.has(p.id));
-    const total = list.reduce((n, p) => n + p.preco_venda * p.quantidade, 0);
-    if (!await confirmAction('Vender selecionadas', `Registrar a venda de todas as unidades de ${list.length} peça(s), sem desconto, com data de hoje? Total ${money(total)}.`, 'Registrar venda')) return;
+    $('#bTitle').textContent = `Vender ${list.length} ${list.length === 1 ? 'peça' : 'peças'}`;
+    $('#bulkItems').innerHTML = '';
+    bulkItems = list.map(p => {
+        const el = document.createElement('div');
+        el.className = 'bulk-item';
+        el.innerHTML = `<p class="bulk-name"><strong>${esc(p.nome)}</strong><small class="bulk-left"></small></p>
+          <label>Cor <select class="v-cor"></select></label>
+          <label>Tamanho <select class="v-tam"></select></label>
+          <label>Qtd. <input class="v-qtd" type="number" min="1" value="1"></label>`;
+        $('#bulkItems').append(el);
+        const stock = stockUnits(p);
+        initVariant(el, stock);
+        return { p, stock, el };
+    });
+    $('#bDesc').value = 0;
+    $('#bData').value = today();
+    prepareSaleFields($('#bPay'), $('#bCli'), $('#bTel'));
+    $('#bulkMsg').textContent = '';
+    updateBulk();
+    $('#bulkDialog').showModal();
+};
+$('#bulkItems').onchange = $('#bulkItems').oninput = $('#bDesc').oninput = updateBulk;
+$('#bCli').onchange = fillPhone($('#bCli'), $('#bTel'));
+$('#bulkForm').onsubmit = async e => {
+    if (e.submitter?.value !== 'ok') return;
+    e.preventDefault();
+    const desc = discount($('#bDesc')), data_venda = $('#bData').value;
+    const sales = bulkItems.map(it => ({ ...it, ...syncVariant(it.el, it.p, it.stock) }));
+    const bad = sales.find(s => s.q < 1 || s.q > s.max);
+    if (bad) { $('#bulkMsg').textContent = `${bad.p.nome}: venda de 1 a ${bad.max} unidades nessa cor e tamanho.`; return; }
+    if (!data_venda) { $('#bulkMsg').textContent = 'Informe a data da venda.'; return; }
+    $('#bulkDialog').close();
     selected.clear();
-    await run(() => Promise.all(list.map(p => api('/pecas/' + p.id, { method: 'PUT', body: {
-        status: 'vendida', data_venda: today(), desconto: 0, lucro: +((p.preco_venda - p.preco_comprado_unitario) * p.quantidade).toFixed(2) } }))),
-    'Vendas registradas.');
+    const extra = saleFields($('#bPay'), $('#bCli'), $('#bTel'));
+    // One after another, so a failure stops the batch at a clear point instead of leaving half-written pieces.
+    await run(async () => { for (const s of sales) await registerSale(s.p, s.stock, s.cor, s.tam, s.q, desc, data_venda, extra); },
+        `${sales.length} ${sales.length === 1 ? 'venda registrada' : 'vendas registradas'}.`);
 };
 $('#bulkDelete').onclick = async () => {
     const ids = [...selected];
@@ -575,12 +679,28 @@ async function loadUsers() {
         <span><strong>${esc(u.email)}</strong><span class="sub">${STATUS[u.status] || esc(u.status)} desde ${fmtDate(u.created_at)}</span></span>
         <span class="row-actions">
           ${u.status !== 'active' ? `<button class="btn btn-primary btn-sm" data-uid="${u.id}" data-st="active">Aprovar</button>` : ''}
+          ${u.status === 'active' ? `<button class="btn-link" data-temp="${u.id}">Gerar senha temporária</button>` : ''}
           ${u.status !== 'rejected' ? `<button class="btn-link" data-uid="${u.id}" data-st="rejected">${u.status === 'active' ? 'Bloquear' : 'Recusar'}</button>` : ''}
         </span></li>`).join('');
     $('#usersEmpty').hidden = users.length > 0;
 }
+function showInfo(title, text, code) {
+    $('#iTitle').textContent = title;
+    $('#iText').textContent = text;
+    $('#iCode').textContent = code || '';
+    $('#iCode').hidden = !code;
+    $('#infoDialog').showModal();
+}
 $('#userList').onclick = async e => {
-    const { uid, st } = e.target.dataset;
+    const { uid, st, temp } = e.target.dataset;
+    if (temp) {
+        if (!await confirmAction('Gerar senha temporária', 'A senha atual dessa pessoa deixa de funcionar. Continuar?', 'Gerar senha')) return;
+        try {
+            const r = await api(`/admin/users/${temp}/temp-password`, { method: 'POST' });
+            showInfo('Senha temporária', `Passe esta senha para ${r.email}. Ela não será mostrada de novo. Para trocar por uma senha própria, a pessoa usa "Esqueci minha senha".`, r.password);
+        } catch (err) { toast(err.message, true); }
+        return;
+    }
     if (!uid) return;
     try { await api('/admin/users/' + uid, { method: 'PATCH', body: { status: st } }); toast(st === 'active' ? 'Acesso aprovado.' : 'Acesso bloqueado.'); await loadUsers(); }
     catch (err) { toast(err.message, true); }
@@ -600,6 +720,23 @@ document.querySelectorAll('[data-theme-toggle]').forEach(b => b.onclick = () => 
     try { localStorage.setItem('theme', t); } catch {}
 });
 
+// ---------- Planilha completa ----------
+$('#exportAllBtn').onclick = async () => {
+    const btn = $('#exportAllBtn');
+    btn.disabled = true;
+    try {
+        const res = await fetch(API_BASE_URL + '/export', { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } });
+        if (res.status === 401) { logout(); throw new Error('Sua sessão expirou. Entre de novo.'); }
+        if (!res.ok) throw new Error('Não foi possível gerar a planilha. Tente de novo.');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(await res.blob());
+        a.download = `doce-veneno-completo-${today()}.csv`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    } catch (err) { toast(err.message, true); }
+    finally { btn.disabled = false; }
+};
+
 // ---------- Start ----------
 async function start() {
     $('#authView').hidden = true;
@@ -612,4 +749,4 @@ async function start() {
         await load();
     } catch (e) { toast(e.message, true); }
 }
-localStorage.getItem('accessToken') ? start() : showAuth();
+localStorage.getItem('accessToken') && !resetToken ? start() : showAuth(); // a reset link always opens the new-password screen

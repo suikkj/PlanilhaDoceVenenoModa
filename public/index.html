@@ -19,11 +19,21 @@
   </div>
   <form id="authForm" class="auth-form" novalidate>
     <h1 id="authTitle">Entrar</h1>
-    <label>Email <input type="email" id="authEmail" autocomplete="email" required></label>
-    <label>Senha <input type="password" id="authPassword" autocomplete="current-password" minlength="6" required></label>
+    <label id="authEmailField">Email <input type="email" id="authEmail" autocomplete="email" required></label>
+    <p class="hint" id="authHint" hidden></p>
+    <div class="field" id="authPwField">
+      <label for="authPassword" id="authPwLabel">Senha</label>
+      <div class="pw">
+        <input type="password" id="authPassword" autocomplete="current-password" minlength="6" required>
+        <button type="button" class="pw-toggle" id="pwToggle" aria-controls="authPassword" aria-pressed="false">Mostrar</button>
+      </div>
+    </div>
     <p id="authMsg" class="form-msg" role="alert"></p>
     <button type="submit" class="btn btn-primary" id="authSubmit">Entrar</button>
-    <button type="button" class="btn-link" id="authToggle">Não tem conta? Criar conta</button>
+    <div class="auth-links">
+      <button type="button" class="btn-link" id="authToggle">Não tem conta? Criar conta</button>
+      <button type="button" class="btn-link" id="forgotLink">Esqueci minha senha</button>
+    </div>
   </form>
 </main>
 
@@ -46,7 +56,10 @@
       <div class="figure"><span id="estPecas">0</span><small>peças em estoque</small></div>
       <div class="figure"><span id="estInvestido">R$ 0,00</span><small>investido</small></div>
       <div class="figure"><span id="estPotencial">R$ 0,00</span><small>lucro se vender tudo</small></div>
-      <button class="btn btn-copper" id="addBtn">Nova peça</button>
+      <div class="band-actions">
+        <button class="btn btn-band" id="exportAllBtn">Baixar planilha completa</button>
+        <button class="btn btn-copper" id="addBtn">Nova peça</button>
+      </div>
     </div>
 
     <div class="toolbar">
@@ -151,9 +164,9 @@
     <h2>Vender <span id="sNome"></span></h2>
     <p class="hint" id="sInfo"></p>
     <div class="fields">
-      <label id="sCorWrap">Cor <select id="sCor"></select></label>
-      <label id="sTamWrap">Tamanho <select id="sTam"></select></label>
-      <label>Quantidade <input id="sQtd" type="number" min="1" value="1" required></label>
+      <label id="sCorWrap">Cor <select id="sCor" class="v-cor"></select></label>
+      <label id="sTamWrap">Tamanho <select id="sTam" class="v-tam"></select></label>
+      <label>Quantidade <input id="sQtd" class="v-qtd" type="number" min="1" value="1" required></label>
       <label>Desconto (%) <input id="sDesc" type="number" min="0" max="100" value="0"></label>
       <label>Data da venda <input id="sData" type="date" required></label>
       <label id="sPayWrap">Pagamento
@@ -175,6 +188,37 @@
       <button value="cancel" formnovalidate class="btn btn-ghost">Cancelar</button>
       <button value="ok" class="btn btn-primary">Registrar venda</button>
     </div>
+  </form>
+</dialog>
+
+<!-- Venda em lote -->
+<dialog id="bulkDialog" class="wide-dialog">
+  <form method="dialog" id="bulkForm">
+    <h2 id="bTitle">Vender peças</h2>
+    <div id="bulkItems" class="bulk-items"></div>
+    <div class="fields">
+      <label>Desconto (%) <input id="bDesc" type="number" min="0" max="100" value="0"></label>
+      <label>Data da venda <input id="bData" type="date" required></label>
+      <label>Pagamento <select id="bPay"></select></label>
+      <label>Cliente (opcional) <input id="bCli" list="clienteList" autocomplete="off"></label>
+      <label>Telefone (opcional) <input id="bTel" type="tel" inputmode="tel" autocomplete="off"></label>
+    </div>
+    <p class="sell-total"><span id="bTotal">R$ 0,00</span> <small id="bLucro"></small></p>
+    <p class="form-msg" id="bulkMsg" role="alert"></p>
+    <div class="actions">
+      <button value="cancel" formnovalidate class="btn btn-ghost">Cancelar</button>
+      <button value="ok" class="btn btn-primary">Registrar vendas</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Aviso -->
+<dialog id="infoDialog">
+  <form method="dialog">
+    <h2 id="iTitle"></h2>
+    <p id="iText"></p>
+    <p class="temp-pw" id="iCode"></p>
+    <div class="actions"><button value="ok" class="btn btn-primary">Fechar</button></div>
   </form>
 </dialog>
 
