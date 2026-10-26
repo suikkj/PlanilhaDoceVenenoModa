@@ -410,15 +410,25 @@ $('#fFotos').onclick = e => {
     if (fotoNew !== undefined) { URL.revokeObjectURL(fotoEdit.add[fotoNew].preview); fotoEdit.add.splice(+fotoNew, 1); }
     renderFotos();
 };
-// Shrinks the photo before sending (phone photos are several MB); the server turns it into WebP.
+// Shrinks the photo before sending (phone photos are several MB; Vercel accepts at most 4.5 MB per request).
+// The server turns whatever arrives into WebP, so the browser only needs to make it small.
 async function shrink(file) {
-    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null);
-    if (!bmp) return file; // format the browser can't open (e.g. HEIC on a computer): let the server try
-    const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
-    const c = document.createElement('canvas');
-    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
-    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-    return await new Promise(ok => c.toBlob(ok, 'image/webp', 0.85)) || file;
+    const url = URL.createObjectURL(file);
+    try {
+        const img = new Image();
+        img.src = url;
+        await img.decode(); // <img> applies the phone's rotation (EXIF) in every current browser
+        const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        const blob = await new Promise(ok => c.toBlob(ok, 'image/webp', 0.85));
+        // Safari can't make WebP and silently returns a large PNG instead: send a JPEG then.
+        if (blob && blob.type === 'image/webp') return blob;
+        return await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.85)) || file;
+    } catch {
+        return file; // a format the browser can't open (e.g. HEIC on a computer): let the server try
+    } finally { URL.revokeObjectURL(url); }
 }
 async function uploadFoto(id, file) {
     const blob = await shrink(file);
