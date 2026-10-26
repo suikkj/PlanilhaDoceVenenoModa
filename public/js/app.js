@@ -711,10 +711,11 @@ async function loadNuvemshop() {
     let st;
     try { st = await api('/nuvemshop/status'); } catch (err) { $('#nsStatus').textContent = err.message; return; }
     const box = $('#nsStatus');
-    if (!st.configured) box.innerHTML = '<p>Falta configurar o app: adicione <strong>NUVEMSHOP_APP_ID</strong> e <strong>NUVEMSHOP_CLIENT_SECRET</strong> nas variáveis da Vercel e faça Redeploy.</p>';
-    else if (st.needsMigration) box.innerHTML = '<p>Falta criar as tabelas da integração: rode o SQL da Nuvemshop no Supabase (SQL Editor) e recarregue esta página.</p>';
-    else if (!st.connected) box.innerHTML = '<p>Conecte sua loja para que os pedidos pagos na Nuvemshop entrem aqui como vendas e saiam do estoque.</p><button class="btn btn-primary" id="nsConnect">Conectar Nuvemshop</button>';
-    else box.innerHTML = `<p><strong>Conectada à loja ${esc(st.storeId)}.</strong> Pedidos pagos entram sozinhos como vendas; pedidos cancelados voltam ao estoque.</p><button class="btn-link" id="nsConnect">Reconectar</button>`;
+    if (!st.configured) box.innerHTML = '<p>Falta configurar: adicione <strong>NUVEMSHOP_TOKEN</strong> e <strong>NUVEMSHOP_STORE_ID</strong> nas variáveis da Vercel e faça Redeploy.</p>';
+    else if (st.apiError) box.innerHTML = `<p><strong>A Nuvemshop recusou o acesso.</strong> Confira se o token e o ID da loja estão certos e se o aplicativo tem permissão de leitura de pedidos. Resposta: ${esc(st.apiError)}</p>`;
+    else if (st.needsMigration) box.innerHTML = '<p>Falta criar a tabela da integração: rode o SQL da Nuvemshop no Supabase (SQL Editor) e recarregue esta página.</p>';
+    else if (!st.webhooksOk) box.innerHTML = `<p><strong>Loja ${esc(st.storeName || st.storeId)} encontrada.</strong> Falta ativar os avisos para que os pedidos pagos entrem aqui sozinhos.</p><button class="btn btn-primary" id="nsSetup">Ativar avisos de pedidos</button>`;
+    else box.innerHTML = `<p><strong>Conectada à loja ${esc(st.storeName || st.storeId)}.</strong> Pedidos pagos entram sozinhos como vendas; pedidos cancelados voltam ao estoque.</p>`;
     const pend = st.pedidos.filter(p => p.status === 'erro' || (p.itens_pendentes || []).length);
     $('#nsBadge').hidden = !pend.length;
     $('#nsBadge').textContent = pend.length;
@@ -725,18 +726,19 @@ async function loadNuvemshop() {
           ${(p.itens_pendentes || []).map(i => `<span class="sub">${esc(i.nome)}: ${i.quantidade} ${i.quantidade === 1 ? 'unidade não encontrada' : 'unidades não encontradas'} no estoque (${money(i.preco)} cada). Registre a venda à mão.</span>`).join('')}
         </span>
         <span class="row-actions"><button class="btn-link" data-ns-ok="${esc(p.pedido_id)}">Marcar como resolvido</button></span></li>`).join('');
-    $('#nsPendEmpty').hidden = pend.length > 0 || !st.connected;
+    $('#nsPendEmpty').hidden = pend.length > 0 || !st.webhooksOk;
     const recent = st.pedidos.slice(0, 15);
     $('#nsRecent').innerHTML = recent.map(p => {
         const label = p.status === 'processado' && (p.itens_pendentes || []).length ? NS_STATUS.pendente : NS_STATUS[p.status] || esc(p.status);
         return `<li><span><strong>${head(p)}</strong><span class="sub">${label}</span></span></li>`;
     }).join('');
-    $('#nsRecentEmpty').hidden = recent.length > 0 || !st.connected;
+    $('#nsRecentEmpty').hidden = recent.length > 0 || !st.webhooksOk;
 }
 $('#nsStatus').onclick = async e => {
-    if (e.target.id !== 'nsConnect') return;
-    try { location.href = (await api('/nuvemshop/install-url', { method: 'POST' })).url; }
-    catch (err) { toast(err.message, true); }
+    if (e.target.id !== 'nsSetup') return;
+    e.target.disabled = true;
+    try { toast((await api('/nuvemshop/setup', { method: 'POST' })).message); await loadNuvemshop(); }
+    catch (err) { toast(err.message, true); e.target.disabled = false; }
 };
 $('#nsPend').onclick = async e => {
     const id = e.target.dataset.nsOk;
@@ -744,13 +746,6 @@ $('#nsPend').onclick = async e => {
     try { await api(`/nuvemshop/pedidos/${encodeURIComponent(id)}/resolver`, { method: 'POST' }); toast('Pedido marcado como resolvido.'); await loadNuvemshop(); }
     catch (err) { toast(err.message, true); }
 };
-// Back from authorizing the app on Nuvemshop (?ns=ok or an error message).
-const nsReturn = new URLSearchParams(location.search).get('ns');
-if (nsReturn) {
-    history.replaceState(null, '', location.pathname + location.hash);
-    setTimeout(() => toast(nsReturn === 'ok' ? 'Nuvemshop conectada. Os próximos pedidos pagos entram sozinhos.' : nsReturn, nsReturn !== 'ok'), 800);
-}
-
 // ---------- Planilha completa ----------
 $('#exportAllBtn').onclick = async () => {
     const btn = $('#exportAllBtn');

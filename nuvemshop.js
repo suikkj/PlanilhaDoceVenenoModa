@@ -1,11 +1,9 @@
 // Nuvemshop → site: a paid online order becomes a sale here and leaves the stock; a cancelled one goes back.
 // Pieces are matched by name + color + size. Anything that doesn't match is kept as a pending item for the admin.
+// Uses a store "aplicativo sob medida": NUVEMSHOP_TOKEN and NUVEMSHOP_STORE_ID come from the Vercel variables.
 const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
 const { stockUnits, available, afterSale } = require('./public/js/variants.js');
 
-const APP_ID = process.env.NUVEMSHOP_APP_ID;
-const SECRET = process.env.NUVEMSHOP_CLIENT_SECRET;
 const API = 'https://api.nuvemshop.com.br/2025-03';
 const UA = 'Doce Veneno Estoque (lucasoliprogramador@gmail.com)';
 
@@ -32,9 +30,14 @@ function matchingCombos(p, stock, values) {
 }
 
 module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOnly, jwtSecret, APP_URL }) {
-    const configured = () => !!(APP_ID && SECRET);
-    const getConfig = async () => check(await supabase.from('nuvemshop_config').select('*').eq('id', 1).maybeSingle());
-    async function ns(cfg, path, { method = 'GET', body } = {}) {
+    const cfg = process.env.NUVEMSHOP_TOKEN && process.env.NUVEMSHOP_STORE_ID
+        ? { store_id: String(process.env.NUVEMSHOP_STORE_ID).trim(), access_token: String(process.env.NUVEMSHOP_TOKEN).trim() } : null;
+    // Webhooks are authenticated by a secret key in their URL (derived from JWT_SECRET), and every event is
+    // re-checked against the Nuvemshop API before touching stock, so a forged call can't invent a sale.
+    const hookKey = crypto.createHmac('sha256', String(jwtSecret)).update('nuvemshop-webhook').digest('hex').slice(0, 32);
+    const hookUrl = `${APP_URL}/api/nuvemshop/webhook?key=${hookKey}`;
+    const EVENTS = ['order/paid', 'order/cancelled'];
+    async function ns(path, { method = 'GET', body } = {}) {
         const res = await fetch(`${API}/${cfg.store_id}${path}`, {
             method,
             headers: {
@@ -72,12 +75,16 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         Object.assign(p, { quantidade: p.quantidade - q, ...rest }); // later items of the same order see the new stock
     }
 
-    async function processPaid(cfg, orderId) {
+    async function processPaid(orderId) {
         // Claim the order first: Nuvemshop may deliver the same webhook twice, and a sale must never be written twice.
         const claim = await supabase.from('nuvemshop_pedidos').insert([{ pedido_id: String(orderId), status: 'processando' }]);
         if (claim.error) { if (claim.error.code === '23505') return 'duplicado'; throw claim.error; }
+        const release = () => supabase.from('nuvemshop_pedidos').delete().eq('pedido_id', String(orderId));
+        let order;
+        try { order = await ns(`/orders/${orderId}`); }
+        catch (err) { await release(); throw err; } // nothing written yet: let Nuvemshop's retry try again
+        if (order.payment_status !== 'paid') { await release(); return 'nao-pago'; }
         try {
-            const order = await ns(cfg, `/orders/${orderId}`);
             const stockRows = check(await supabase.from('pecas').select('*')).filter(p => p.status !== 'vendida' && Number(p.quantidade) > 0)
                 .map(p => ({ ...p, quantidade: Number(p.quantidade), preco_venda: Number(p.preco_venda) }))
                 .sort((a, b) => String(a.data_compra || '9999').localeCompare(String(b.data_compra || '9999'))); // oldest stock leaves first
@@ -110,6 +117,8 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
     async function processCancelled(orderId) {
         const ped = check(await supabase.from('nuvemshop_pedidos').select('*').eq('pedido_id', String(orderId)).maybeSingle());
         if (!ped || ped.status === 'cancelado') return 'ignorado';
+        const order = await ns(`/orders/${orderId}`);
+        if (order.status !== 'cancelled') return 'nao-cancelado';
         const rows = check(await supabase.from('pecas').select('*').eq('pedido_nuvemshop', String(orderId)))
             .filter(r => r.status === 'vendida');
         for (const r of rows) {
@@ -124,59 +133,44 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         return 'cancelado';
     }
 
-    // --- Webhook (called by Nuvemshop; authenticated by HMAC of the raw body with the app secret) ---
+    // --- Webhook (called by Nuvemshop) ---
     app.post('/api/nuvemshop/webhook', route(async (req, res) => {
-        const sig = String(req.headers['x-linkedstore-hmac-sha256'] || '');
-        const mine = SECRET && req.rawBody ? crypto.createHmac('sha256', SECRET).update(req.rawBody).digest('hex') : '';
-        if (!mine || sig.length !== mine.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(mine))) return res.sendStatus(401);
-        const cfg = await getConfig();
+        const key = String(req.query.key || '');
+        if (!cfg || key.length !== hookKey.length || !crypto.timingSafeEqual(Buffer.from(key), Buffer.from(hookKey))) return res.sendStatus(401);
         const { event, id, store_id } = req.body;
-        if (!cfg || String(store_id) !== String(cfg.store_id)) return res.sendStatus(200); // not our store: acknowledge and ignore
-        const result = event === 'order/paid' ? await processPaid(cfg, id)
+        if (String(store_id) !== cfg.store_id) return res.sendStatus(200); // not our store: acknowledge and ignore
+        const result = event === 'order/paid' ? await processPaid(id)
             : event === 'order/cancelled' ? await processCancelled(id) : 'ignorado';
         res.json({ result });
     }));
 
-    // --- Connection (admin) ---
-    app.post('/api/nuvemshop/install-url', auth, adminOnly, route(async (req, res) => {
-        if (!configured()) return res.status(503).json({ message: 'Configure NUVEMSHOP_APP_ID e NUVEMSHOP_CLIENT_SECRET na Vercel.' });
-        const state = jwt.sign({ purpose: 'ns-install' }, jwtSecret, { expiresIn: '15m' });
-        res.json({ url: `https://www.nuvemshop.com.br/apps/${APP_ID}/authorize?state=${state}` });
-    }));
-
-    // Nuvemshop redirects here after the admin authorizes the app on the store.
-    app.get('/api/nuvemshop/callback', route(async (req, res) => {
-        const back = msg => res.redirect(`${APP_URL}/?ns=${encodeURIComponent(msg)}#nuvemshop`);
-        let state = null;
-        try { state = jwt.verify(String(req.query.state), jwtSecret); } catch { /* invalid */ }
-        if (!state || state.purpose !== 'ns-install') return back('A conexão expirou. Clique em Conectar Nuvemshop de novo.');
-        if (!req.query.code) return back('A Nuvemshop não enviou a autorização. Tente de novo.');
-        const tok = await fetch('https://www.tiendanube.com/apps/authorize/token', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': UA },
-            body: JSON.stringify({ client_id: APP_ID, client_secret: SECRET, grant_type: 'authorization_code', code: String(req.query.code) }),
-        }).then(r => r.json()).catch(() => ({}));
-        if (!tok.access_token) return back(`A Nuvemshop recusou a conexão${tok.error_description ? `: ${tok.error_description}` : ''}.`);
-        const cfg = { id: 1, store_id: String(tok.user_id ?? tok.store_id), access_token: tok.access_token, updated_at: new Date().toISOString() };
-        check(await supabase.from('nuvemshop_config').upsert([cfg]));
-        // Subscribe to the two order events, skipping any already registered for this URL.
-        const url = `${APP_URL}/api/nuvemshop/webhook`;
-        const existing = await ns(cfg, '/webhooks').catch(() => []);
-        for (const event of ['order/paid', 'order/cancelled']) {
-            if (!existing.some(w => w.event === event && w.url === url)) await ns(cfg, '/webhooks', { method: 'POST', body: { event, url } });
+    // --- Admin ---
+    // Registers the two order webhooks (skips the ones already there). Safe to run again.
+    app.post('/api/nuvemshop/setup', auth, adminOnly, route(async (req, res) => {
+        if (!cfg) return res.status(503).json({ message: 'Configure NUVEMSHOP_TOKEN e NUVEMSHOP_STORE_ID na Vercel.' });
+        const existing = await ns('/webhooks');
+        for (const event of EVENTS) {
+            if (!existing.some(w => w.event === event && w.url === hookUrl)) await ns('/webhooks', { method: 'POST', body: { event, url: hookUrl } });
         }
-        back('ok');
+        res.json({ message: 'Avisos de pedidos ativados.' });
     }));
 
     app.get('/api/nuvemshop/status', auth, adminOnly, route(async (req, res) => {
-        let cfg = null, pedidos = [], needsMigration = false;
+        const out = { configured: !!cfg, storeId: cfg?.store_id || null, storeName: null, webhooksOk: false, apiError: null, needsMigration: false, pedidos: [] };
         try {
-            cfg = await getConfig();
-            pedidos = check(await supabase.from('nuvemshop_pedidos').select('*').order('created_at', { ascending: false }).limit(100));
+            out.pedidos = check(await supabase.from('nuvemshop_pedidos').select('*').order('created_at', { ascending: false }).limit(100));
         } catch (err) {
-            if (/nuvemshop_(config|pedidos)/.test(err.message) || err.code === '42P01' || err.code === 'PGRST205') needsMigration = true;
+            if (/nuvemshop_pedidos/.test(err.message) || err.code === '42P01' || err.code === 'PGRST205') out.needsMigration = true;
             else throw err;
         }
-        res.json({ configured: configured(), connected: !!cfg, storeId: cfg?.store_id || null, needsMigration, pedidos });
+        if (cfg) {
+            try {
+                const [store, hooks] = await Promise.all([ns('/store'), ns('/webhooks')]);
+                const n = store.name; out.storeName = typeof n === 'object' ? n.pt || Object.values(n)[0] : n;
+                out.webhooksOk = EVENTS.every(e => hooks.some(w => w.event === e && w.url === hookUrl));
+            } catch (err) { out.apiError = err.message; }
+        }
+        res.json(out);
     }));
 
     app.post('/api/nuvemshop/pedidos/:id/resolver', auth, adminOnly, route(async (req, res) => {

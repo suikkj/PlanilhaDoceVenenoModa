@@ -17,13 +17,5 @@ create table if not exists public.nuvemshop_pedidos (
   created_at timestamptz not null default now()
 );
 
-create table if not exists public.nuvemshop_config (
-  id int primary key default 1 check (id = 1),
-  store_id text not null,
-  access_token text not null,
-  updated_at timestamptz not null default now()
-);
-
--- No policies: only the server (service role key) can read these. The access token never reaches the browser.
+-- No policies: only the server (service role key) can read it.
 alter table public.nuvemshop_pedidos enable row level security;
-alter table public.nuvemshop_config enable row level security;
