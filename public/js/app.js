@@ -36,7 +36,7 @@ function toast(msg, isError) {
     t.textContent = msg;
     t.className = 'toast show' + (isError ? ' error' : '');
     clearTimeout(t._h);
-    t._h = setTimeout(() => t.className = 'toast', 3500);
+    t._h = setTimeout(() => t.className = 'toast', isError ? 8000 : 3500); // errors carry instructions: leave time to read them
 }
 // Runs an action, shows its error as a toast, reloads data on success.
 async function run(fn, okMsg) {
@@ -239,7 +239,7 @@ function renderStock() {
         const low = p.quantidade <= LOW_STOCK;
         return `<tr class="${low ? 'low' : ''}">
           <td class="c-check"><input type="checkbox" data-id="${p.id}" ${selected.has(p.id) ? 'checked' : ''} aria-label="Selecionar ${esc(p.nome)}"></td>
-          <td><div class="peca-cell">${p.fotos?.length ? `<img class="thumb" src="${esc(p.fotos[0].url)}" alt="" loading="lazy">` : ''}<span><strong>${esc(p.nome)}</strong>${p.cor ? `<span class="sub">${esc(uniqJoin(p.cor))}</span>` : ''}</span></div></td>
+          <td><div class="peca-cell">${p.fotos?.length ? `<img class="thumb" src="${esc(p.fotos[0].url)}" alt="" loading="lazy" onerror="this.remove()">` : ''}<span><strong>${esc(p.nome)}</strong>${p.cor ? `<span class="sub">${esc(uniqJoin(p.cor))}</span>` : ''}</span></div></td>
           <td data-l="Tam.">${esc(uniqJoin(p.tamanho)) || '–'}</td>
           <td class="num" data-l="Qtd."><span>${p.quantidade}${low ? '<span class="tag">baixo</span>' : ''}</span></td>
           <td class="num" data-l="Compra">${money(p.preco_comprado_unitario)}</td>
@@ -396,12 +396,13 @@ $('#pecaForm').onsubmit = async e => {
     if (err) { $('#pecaMsg').textContent = err; return; }
     $('#pecaDialog').close();
     const fotos = { remove: [...fotoEdit.remove], add: fotoEdit.add.map(f => f.file) };
+    let aviso = '';
     const saveFotos = async id => {
         for (const path of fotos.remove) await api(`/pecas/${id}/fotos/remover`, { method: 'POST', body: { path } });
         for (const [i, file] of fotos.add.entries()) {
             toast(`Enviando foto ${i + 1} de ${fotos.add.length}…`);
             const r = await uploadFoto(id, file);
-            if (r.aviso) toast(r.aviso, true);
+            if (r.aviso) aviso = r.aviso;
         }
     };
     if (editing) await run(async () => { await api('/pecas/' + editing.id, { method: 'PUT', body: d }); await saveFotos(editing.id); }, 'Peça atualizada.');
@@ -409,6 +410,7 @@ $('#pecaForm').onsubmit = async e => {
         await run(async () => { const row = await api('/pecas', { method: 'POST', body: { ...d, status: 'estoque' } }); await saveFotos(row.id); }, `${d.nome} adicionada.`);
         if (action === 'again') openPeca(null, d.data_compra); // same purchase date for the next piece of the batch
     }
+    if (aviso) toast(aviso, true); // after the "saved" message, so the warning is the one left on screen
 };
 
 // ---------- Fotos ----------
