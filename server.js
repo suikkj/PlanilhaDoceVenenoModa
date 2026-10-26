@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const sharp = require('sharp');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -143,7 +144,9 @@ app.patch('/api/pecas/batch', auth, route(async (req, res) => {
     if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'Nenhuma peça selecionada.' });
     const names = await namesOf(ids);
     if (action === 'delete') {
+        const files = await fotoPathsOf(ids);
         check(await supabase.from('pecas').delete().in('id', ids));
+        await removeFiles(files);
         await nuvem.afterChange(names);
         return res.json({ message: 'Peças apagadas.' });
     }
@@ -163,9 +166,61 @@ app.put('/api/pecas/:id', auth, route(async (req, res) => {
 
 app.delete('/api/pecas/:id', auth, route(async (req, res) => {
     const before = await namesOf([req.params.id]);
+    const files = await fotoPathsOf([req.params.id]);
     check(await supabase.from('pecas').delete().eq('id', req.params.id));
+    await removeFiles(files);
     await nuvem.afterChange(before);
     res.json({ message: 'Peça apagada.' });
+}));
+
+// --- Fotos (bucket público fotos_estoque_doce_veneno; only the server writes to it) ---
+const BUCKET = 'fotos_estoque_doce_veneno';
+const MAX_FOTOS = 8;
+const bucket = () => supabase.storage.from(BUCKET);
+// Rows without the fotos column (migration not run) simply have no photos.
+const fotoPathsOf = async ids => {
+    const r = await supabase.from('pecas').select('fotos').in('id', ids.map(String));
+    return r.error ? [] : r.data.flatMap(p => (p.fotos || []).map(f => f.path));
+};
+// A piece is gone either way; a leftover file only costs storage, so failures here are logged, not raised.
+const removeFiles = async paths => { if (paths.length) { const r = await bucket().remove(paths); if (r.error) console.error('remove fotos', r.error); } };
+
+// Body is the image itself (the page sends it already shrunk). Always re-encoded here: guarantees WebP,
+// caps the size and strips metadata such as the GPS location of phone photos.
+app.post('/api/pecas/:id/fotos', auth, express.raw({ type: 'image/*', limit: '8mb' }), route(async (req, res) => {
+    if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ message: 'Envie uma imagem.' });
+    const row = check(await supabase.from('pecas').select('id, nome, fotos').eq('id', req.params.id).maybeSingle());
+    if (!row) return res.status(404).json({ message: 'Peça não encontrada.' });
+    const fotos = row.fotos || [];
+    if (fotos.length >= MAX_FOTOS) return res.status(400).json({ message: `Cada peça pode ter até ${MAX_FOTOS} fotos.` });
+    let webp;
+    try {
+        webp = await sharp(req.body).rotate().resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
+    } catch { return res.status(400).json({ message: 'Não consegui ler essa imagem. Use uma foto JPG, PNG ou WebP.' }); }
+    const path = `pecas/${row.id}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.webp`;
+    const up = await bucket().upload(path, webp, { contentType: 'image/webp', cacheControl: '31536000', upsert: false });
+    if (up.error) {
+        const msg = /not found/i.test(up.error.message) ? `O bucket "${BUCKET}" não existe no Supabase. Crie-o em Storage.` : up.error.message;
+        return res.status(500).json({ message: `Não foi possível guardar a foto: ${msg}` });
+    }
+    const url = bucket().getPublicUrl(path).data.publicUrl;
+    const saved = check(await supabase.from('pecas').update({ fotos: [...fotos, { path, url }] }).eq('id', row.id).select('fotos'))[0];
+    // The Nuvemshop and the page need to open the photo by its link.
+    const open = await fetch(url, { method: 'HEAD' }).then(r => r.ok, () => false);
+    await nuvem.afterChange([row.nome]);
+    res.status(201).json({ fotos: saved.fotos, kb: Math.round(webp.length / 1024),
+        ...(!open && { aviso: `A foto foi salva, mas não abre pelo link. Marque o bucket "${BUCKET}" como público no Supabase (Storage → o bucket → Edit → Public).` }) });
+}));
+
+app.post('/api/pecas/:id/fotos/remover', auth, route(async (req, res) => {
+    const row = check(await supabase.from('pecas').select('id, nome, fotos').eq('id', req.params.id).maybeSingle());
+    if (!row) return res.status(404).json({ message: 'Peça não encontrada.' });
+    const path = String(req.body.path || '');
+    if (!(row.fotos || []).some(f => f.path === path)) return res.status(404).json({ message: 'Foto não encontrada nesta peça.' });
+    check(await supabase.from('pecas').update({ fotos: row.fotos.filter(f => f.path !== path) }).eq('id', row.id));
+    await removeFiles([path]);
+    await nuvem.afterChange([row.nome]);
+    res.json({ message: 'Foto removida.' });
 }));
 
 // Read-only: months saved by the old version, shown alongside months computed from sales.

@@ -90,10 +90,31 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
     const comboKey = (cor, tam) => `${norm(cor)}|${norm(tam)}`;
     const money2 = v => (Number(v) || 0).toFixed(2);
 
+    // Adds photos the product doesn't have yet and removes the ones deleted here. Only touches photos the site sent,
+    // so pictures added directly on Nuvemshop stay.
+    async function syncImages(key, productId, fotos) {
+        const r = await supabase.from('nuvemshop_produtos').select('fotos_enviadas').eq('nome', key).maybeSingle();
+        if (r.error) { if (r.error.code === '42703' || /fotos_enviadas/.test(r.error.message)) return; throw r.error; } // photo migration not run yet
+        let sent = r.data?.fotos_enviadas || [];
+        const save = async () => check(await supabase.from('nuvemshop_produtos').update({ fotos_enviadas: sent }).eq('nome', key));
+        const keep = new Set(fotos.map(f => f.path));
+        for (const old of sent.filter(x => !keep.has(x.path))) {
+            await ns(`/products/${productId}/images/${old.id}`, { method: 'DELETE' }).catch(err => { if (err.status !== 404) throw err; });
+            sent = sent.filter(x => x !== old); await save();
+        }
+        for (const f of fotos) {
+            if (sent.some(x => x.path === f.path)) continue;
+            const img = await ns(`/products/${productId}/images`, { method: 'POST', body: { src: f.url } }); // Nuvemshop downloads it from the public link
+            sent = [...sent, { path: f.path, id: img.id }]; await save(); // saved one by one: a failure halfway never re-sends the same photo
+        }
+    }
+
     async function syncName(nome) {
         const key = norm(nome);
-        const rows = check(await supabase.from('pecas').select('*'))
-            .filter(p => p.status !== 'vendida' && Number(p.quantidade) > 0 && norm(p.nome) === key);
+        const named = check(await supabase.from('pecas').select('*')).filter(p => norm(p.nome) === key);
+        const rows = named.filter(p => p.status !== 'vendida' && Number(p.quantidade) > 0);
+        // Photos of every row with this name, sold ones included, so a product keeps its photos while restocking.
+        const fotos = [...new Map(named.flatMap(p => p.fotos || []).map(f => [f.path, f])).values()];
         const want = new Map();
         for (const p of rows) for (const u of unitsOf(p)) {
             const k = comboKey(u.cor, u.tam);
@@ -122,6 +143,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
                     })),
                 } });
                 check(await supabase.from('nuvemshop_produtos').update({ product_id: String(created.id), erro: null, updated_at: new Date().toISOString() }).eq('nome', key));
+                await syncImages(key, String(created.id), fotos);
                 return 'criado';
             }
             check(await supabase.from('nuvemshop_produtos').upsert([{ nome: key, product_id: productId, erro: null, updated_at: new Date().toISOString() }]));
@@ -153,6 +175,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
             updates.push({ id: nv.id, stock: w.stock });
         }
         if (updates.length) await ns(`/products/${productId}/variants`, { method: 'PATCH', body: updates });
+        await syncImages(key, productId, fotos);
         const erro = problems.length ? `Ajuste à mão na Nuvemshop: ${problems.join('; ')}.` : null;
         check(await supabase.from('nuvemshop_produtos').update({ erro, updated_at: new Date().toISOString() }).eq('nome', key));
         return erro ? 'parcial' : 'atualizado';

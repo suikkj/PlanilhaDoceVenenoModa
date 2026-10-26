@@ -211,7 +211,7 @@ function renderStock() {
         const low = p.quantidade <= LOW_STOCK;
         return `<tr class="${low ? 'low' : ''}">
           <td class="c-check"><input type="checkbox" data-id="${p.id}" ${selected.has(p.id) ? 'checked' : ''} aria-label="Selecionar ${esc(p.nome)}"></td>
-          <td><strong>${esc(p.nome)}</strong>${p.cor ? `<span class="sub">${esc(uniqJoin(p.cor))}</span>` : ''}</td>
+          <td><div class="peca-cell">${p.fotos?.length ? `<img class="thumb" src="${esc(p.fotos[0].url)}" alt="" loading="lazy">` : ''}<span><strong>${esc(p.nome)}</strong>${p.cor ? `<span class="sub">${esc(uniqJoin(p.cor))}</span>` : ''}</span></div></td>
           <td data-l="Tam.">${esc(uniqJoin(p.tamanho)) || '–'}</td>
           <td class="num" data-l="Qtd."><span>${p.quantidade}${low ? '<span class="tag">baixo</span>' : ''}</span></td>
           <td class="num" data-l="Compra">${money(p.preco_comprado_unitario)}</td>
@@ -332,6 +332,9 @@ function openPeca(p, keepDate) {
     $('#fFornWrap').hidden = !hasCol('fornecedor');
     $('#gradeRows').innerHTML = '';
     (p ? gradeFromPiece(p) : [undefined]).forEach(r => addGradeRow(r));
+    $('#fFotosWrap').hidden = !hasCol('fotos');
+    fotoEdit.saved = p?.fotos || []; fotoEdit.remove = new Set(); fotoEdit.add.forEach(f => URL.revokeObjectURL(f.preview)); fotoEdit.add = [];
+    renderFotos();
     $('#pecaMsg').textContent = '';
     updateMargem();
     $('#pecaDialog').showModal();
@@ -363,12 +366,71 @@ $('#pecaForm').onsubmit = async e => {
         : !(d.preco_comprado_unitario >= 0) || !(d.preco_venda >= 0) ? 'Informe os dois preços (zero ou mais).' : '');
     if (err) { $('#pecaMsg').textContent = err; return; }
     $('#pecaDialog').close();
-    if (editing) await run(() => api('/pecas/' + editing.id, { method: 'PUT', body: d }), 'Peça atualizada.');
+    const fotos = { remove: [...fotoEdit.remove], add: fotoEdit.add.map(f => f.file) };
+    const saveFotos = async id => {
+        for (const path of fotos.remove) await api(`/pecas/${id}/fotos/remover`, { method: 'POST', body: { path } });
+        for (const [i, file] of fotos.add.entries()) {
+            toast(`Enviando foto ${i + 1} de ${fotos.add.length}…`);
+            const r = await uploadFoto(id, file);
+            if (r.aviso) toast(r.aviso, true);
+        }
+    };
+    if (editing) await run(async () => { await api('/pecas/' + editing.id, { method: 'PUT', body: d }); await saveFotos(editing.id); }, 'Peça atualizada.');
     else {
-        await run(() => api('/pecas', { method: 'POST', body: { ...d, status: 'estoque' } }), `${d.nome} adicionada.`);
+        await run(async () => { const row = await api('/pecas', { method: 'POST', body: { ...d, status: 'estoque' } }); await saveFotos(row.id); }, `${d.nome} adicionada.`);
         if (action === 'again') openPeca(null, d.data_compra); // same purchase date for the next piece of the batch
     }
 };
+
+// ---------- Fotos ----------
+// Changes stay in the dialog until "Salvar"; Cancelar leaves the piece untouched.
+const MAX_FOTOS = 8;
+const fotoEdit = { saved: [], remove: new Set(), add: [] };
+function renderFotos() {
+    const kept = fotoEdit.saved.filter(f => !fotoEdit.remove.has(f.path));
+    $('#fFotos').innerHTML = [
+        ...kept.map(f => `<figure><img src="${esc(f.url)}" alt=""><button type="button" class="btn-link" data-foto-del="${esc(f.path)}" aria-label="Remover foto">Remover</button></figure>`),
+        ...fotoEdit.add.map((f, i) => `<figure class="new"><img src="${f.preview}" alt=""><button type="button" class="btn-link" data-foto-new="${i}" aria-label="Remover foto nova">Remover</button></figure>`),
+    ].join('');
+    const total = kept.length + fotoEdit.add.length;
+    $('#fFotoInput').disabled = total >= MAX_FOTOS;
+    $('#fFotoInput').closest('label').classList.toggle('disabled', total >= MAX_FOTOS);
+}
+$('#fFotoInput').onchange = e => {
+    const room = MAX_FOTOS - (fotoEdit.saved.length - fotoEdit.remove.size) - fotoEdit.add.length;
+    const files = [...e.target.files].filter(f => f.type.startsWith('image/'));
+    if (files.length > room) $('#pecaMsg').textContent = `Só cabem mais ${room} ${room === 1 ? 'foto' : 'fotos'} nesta peça; as outras ficaram de fora.`;
+    for (const file of files.slice(0, room)) fotoEdit.add.push({ file, preview: URL.createObjectURL(file) });
+    e.target.value = '';
+    renderFotos();
+};
+$('#fFotos').onclick = e => {
+    const { fotoDel, fotoNew } = e.target.dataset;
+    if (fotoDel) fotoEdit.remove.add(fotoDel);
+    if (fotoNew !== undefined) { URL.revokeObjectURL(fotoEdit.add[fotoNew].preview); fotoEdit.add.splice(+fotoNew, 1); }
+    renderFotos();
+};
+// Shrinks the photo before sending (phone photos are several MB); the server turns it into WebP.
+async function shrink(file) {
+    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null);
+    if (!bmp) return file; // format the browser can't open (e.g. HEIC on a computer): let the server try
+    const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    return await new Promise(ok => c.toBlob(ok, 'image/webp', 0.85)) || file;
+}
+async function uploadFoto(id, file) {
+    const blob = await shrink(file);
+    const res = await fetch(`${API_BASE_URL}/pecas/${id}/fotos`, {
+        method: 'POST', body: blob,
+        headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}`, 'Content-Type': blob.type || 'image/jpeg' },
+    });
+    if (res.status === 401) { logout(); throw new Error('Sua sessão expirou. Entre de novo.'); }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || (res.status === 413 ? 'Foto grande demais.' : `Erro ${res.status} ao enviar a foto.`));
+    return data;
+}
 
 // Vender
 let selling = null, sellStock = null;
