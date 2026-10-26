@@ -45,6 +45,7 @@
       <a href="#estoque" data-tab="estoque">Estoque</a>
       <a href="#vendas" data-tab="vendas">Vendas</a>
       <a href="#usuarios" data-tab="usuarios" id="tabUsuarios" hidden>Usuários <span id="pendingBadge" class="badge" hidden></span></a>
+      <a href="#nuvemshop" data-tab="nuvemshop" id="tabNuvem" hidden>Nuvemshop <span id="nsBadge" class="badge" hidden></span></a>
     </nav>
     <button type="button" class="theme-btn" data-theme-toggle>Modo escuro</button>
     <button class="btn-link topbar-out" id="logoutBtn">Sair</button>
@@ -121,6 +122,17 @@
   </section>
 
   <!-- USUÁRIOS -->
+  <section id="view-nuvemshop" class="view" hidden>
+    <h2 class="view-title">Nuvemshop</h2>
+    <div class="ns-status" id="nsStatus"></div>
+    <h3 class="sub-title">Pendências</h3>
+    <ul class="users" id="nsPend"></ul>
+    <p class="empty" id="nsPendEmpty" hidden>Nenhuma pendência. Todos os pedidos pagos foram encontrados no estoque.</p>
+    <h3 class="sub-title">Últimos pedidos</h3>
+    <ul class="users" id="nsRecent"></ul>
+    <p class="empty" id="nsRecentEmpty" hidden>Nenhum pedido recebido ainda.</p>
+  </section>
+
   <section id="view-usuarios" class="view" hidden>
     <h2 class="view-title">Pedidos de acesso</h2>
     <ul class="users" id="userList"></ul>
@@ -242,6 +254,7 @@
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script src="js/config.js"></script>
+<script src="js/variants.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

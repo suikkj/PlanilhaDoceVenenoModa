@@ -26,7 +26,8 @@ const sendMail = (to, subject, text, attachments) =>
 const pwTag = hash => crypto.createHash('sha256').update(String(hash)).digest('hex').slice(0, 16);
 
 const app = express();
-app.use(express.json());
+// rawBody is kept for the Nuvemshop webhook signature check.
+app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
 
 const allowedOrigins = ['https://docevenenoestoque.vercel.app'];
 if (process.env.NODE_ENV !== 'production') {
@@ -182,7 +183,7 @@ app.post('/api/admin/users/:id/temp-password', auth, adminOnly, route(async (req
 }));
 
 // --- Planilha completa e backup ---
-const PAY = { pix: 'Pix', credito: 'Cartão de crédito', debito: 'Cartão de débito', dinheiro: 'Dinheiro' };
+const PAY = { pix: 'Pix', credito: 'Cartão de crédito', debito: 'Cartão de débito', dinheiro: 'Dinheiro', nuvemshop: 'Nuvemshop' };
 function fullCsv(pecas) {
     const num = v => v == null || v === '' ? '' : (Number(v) || 0).toFixed(2).replace('.', ',');
     const date = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '';
@@ -223,6 +224,8 @@ app.get('/api/cron/backup', route(async (req, res) => {
          { filename: `doce-veneno-backup-${day}.json`, content: JSON.stringify({ geradoEm: new Date().toISOString(), pecas, historico_mensal: historico, usuarios }, null, 2) }]);
     res.json({ message: `Backup enviado para ${recipients.length} ${recipients.length === 1 ? 'pessoa' : 'pessoas'}.` });
 }));
+
+require('./nuvemshop')(app, { supabase, check, route, auth, adminOnly, jwtSecret, APP_URL });
 
 if (require.main === module) {
     const port = process.env.PORT || 3000;

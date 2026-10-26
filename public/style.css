@@ -182,6 +182,10 @@ button:disabled { opacity: .6; cursor: wait; }
 
 /* ---------- Users ---------- */
 .view-title { margin-top: 2rem; }
+.sub-title { font-family: var(--display); font-weight: 500; font-size: 1.3rem; margin: 2rem 0 .75rem; }
+.ns-status { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem 1.1rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem 1.5rem; }
+.ns-status p { margin: 0; max-width: 65ch; }
+.users li .sub + .sub { margin-top: .2rem; }
 .users { list-style: none; padding: 0; margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
 .users li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .5rem 1rem; padding: .8rem 1rem; border-bottom: 1px solid var(--line); }
 .users li:last-child { border-bottom: 0; }

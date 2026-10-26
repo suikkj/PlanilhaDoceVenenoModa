@@ -136,7 +136,7 @@ $('#logoutBtn').onclick = logout;
 // ---------- Navigation ----------
 function showTab() {
     let tab = location.hash.slice(1) || 'estoque';
-    if (tab === 'usuarios' && !isAdmin) tab = 'estoque';
+    if ((tab === 'usuarios' || tab === 'nuvemshop') && !isAdmin) tab = 'estoque';
     document.querySelectorAll('.view').forEach(v => v.hidden = v.id !== 'view-' + tab);
     document.querySelectorAll('.tabs a').forEach(a => a.toggleAttribute('aria-current', a.dataset.tab === tab));
 }
@@ -171,7 +171,7 @@ async function load() {
     }
     renderStock();
     renderSales();
-    if (isAdmin) loadUsers();
+    if (isAdmin) { loadUsers(); loadNuvemshop(); }
 }
 
 // ---------- Estoque ----------
@@ -371,33 +371,6 @@ $('#pecaForm').onsubmit = async e => {
 };
 
 // Vender
-// Colors and sizes are stored as comma lists, one entry per unit ("Preta, Branca, Branca" + "U, U, U").
-const splitList = s => String(s ?? '').split(',').map(x => x.trim()).filter(Boolean);
-function stockUnits(p) {
-    const n = p.quantidade;
-    const fit = l => l.length === n ? l : l.length === 1 ? Array(n).fill(l[0]) : l.length === 0 ? Array(n).fill('') : null;
-    const c = fit(splitList(p.cor)), t = fit(splitList(p.tamanho));
-    if (c && t) return { paired: true, units: c.map((cor, i) => ({ cor, tam: t[i] })) };
-    // Lists don't line up with the quantity: treat colors and sizes independently.
-    return { paired: false, c: splitList(p.cor), t: splitList(p.tamanho) };
-}
-const countOf = (l, v) => l.filter(x => x === v).length;
-function available(s, cor, tam, n) {
-    if (s.paired) return s.units.filter(u => u.cor === cor && u.tam === tam).length;
-    return Math.min(n, s.c.length ? countOf(s.c, cor) : n, s.t.length ? countOf(s.t, tam) : n);
-}
-const joinList = l => new Set(l).size <= 1 ? (l[0] || null) : l.join(', ');
-// What stays in stock after selling q units of cor/tam.
-function afterSale(s, cor, tam, q) {
-    if (s.paired) {
-        let left = q;
-        const rest = s.units.filter(u => !(left > 0 && u.cor === cor && u.tam === tam && left--));
-        return { cor: joinList(rest.map(u => u.cor).filter(Boolean)), tamanho: joinList(rest.map(u => u.tam).filter(Boolean)) };
-    }
-    const drop = (l, v) => { let k = q; return l.filter(x => !(k > 0 && x === v && k--)); };
-    return { cor: joinList(drop(s.c, cor)), tamanho: joinList(drop(s.t, tam)) };
-}
-
 let selling = null, sellStock = null;
 function fillSelect(sel, values, keep) {
     const uniq = [...new Set(values)];
@@ -599,7 +572,7 @@ function renderSales() {
           <td><strong>${esc(p.nome)}</strong>${saleSub(p) ? `<span class="sub">${esc(saleSub(p))}</span>` : ''}</td>
           <td data-l="Tam.">${esc(uniqJoin(p.tamanho)) || '–'}</td>
           <td class="num" data-l="Qtd.">${p.quantidade}</td>
-          <td class="num" data-l="Desconto">${p.desconto ? `${+p.desconto}%` : '–'}</td>
+          <td class="num" data-l="Desconto">${+p.desconto ? `${+(+p.desconto).toFixed(1)}%` : '–'}</td>
           <td class="num" data-l="Total">${money(p.preco_venda * p.quantidade)}</td>
           <td data-l="Lucro" class="num ${l < 0 ? 'neg' : ''}">${money(l)}</td>
           <td class="row-actions"><button class="btn-link" data-undo="${p.id}">Desfazer venda</button></td></tr>`;
@@ -613,7 +586,7 @@ function renderSales() {
     renderRanks(rows);
 }
 
-const PAY = { pix: 'Pix', credito: 'Cartão de crédito', debito: 'Cartão de débito', dinheiro: 'Dinheiro' };
+const PAY = { pix: 'Pix', credito: 'Cartão de crédito', debito: 'Cartão de débito', dinheiro: 'Dinheiro', nuvemshop: 'Nuvemshop' };
 const saleSub = p => [uniqJoin(p.cor), p.cliente_nome && `para ${p.cliente_nome}`, PAY[p.forma_pagamento]].filter(Boolean).join(', ');
 let salesRows = [];
 
@@ -731,6 +704,53 @@ document.querySelectorAll('[data-theme-toggle]').forEach(b => b.onclick = () => 
     try { localStorage.setItem('theme', t); } catch {}
 });
 
+// ---------- Nuvemshop ----------
+const NS_STATUS = { processado: 'Venda registrada e baixa no estoque', pendente: 'Com pendência', cancelado: 'Cancelado e devolvido ao estoque',
+    resolvido: 'Resolvido à mão', erro: 'Erro', processando: 'Processando' };
+async function loadNuvemshop() {
+    let st;
+    try { st = await api('/nuvemshop/status'); } catch (err) { $('#nsStatus').textContent = err.message; return; }
+    const box = $('#nsStatus');
+    if (!st.configured) box.innerHTML = '<p>Falta configurar o app: adicione <strong>NUVEMSHOP_APP_ID</strong> e <strong>NUVEMSHOP_CLIENT_SECRET</strong> nas variáveis da Vercel e faça Redeploy.</p>';
+    else if (st.needsMigration) box.innerHTML = '<p>Falta criar as tabelas da integração: rode o SQL da Nuvemshop no Supabase (SQL Editor) e recarregue esta página.</p>';
+    else if (!st.connected) box.innerHTML = '<p>Conecte sua loja para que os pedidos pagos na Nuvemshop entrem aqui como vendas e saiam do estoque.</p><button class="btn btn-primary" id="nsConnect">Conectar Nuvemshop</button>';
+    else box.innerHTML = `<p><strong>Conectada à loja ${esc(st.storeId)}.</strong> Pedidos pagos entram sozinhos como vendas; pedidos cancelados voltam ao estoque.</p><button class="btn-link" id="nsConnect">Reconectar</button>`;
+    const pend = st.pedidos.filter(p => p.status === 'erro' || (p.itens_pendentes || []).length);
+    $('#nsBadge').hidden = !pend.length;
+    $('#nsBadge').textContent = pend.length;
+    const head = p => `Pedido #${esc(p.numero || p.pedido_id)}${p.data_venda ? `, ${fmtDate(p.data_venda)}` : ''}${p.cliente ? `, ${esc(p.cliente)}` : ''}`;
+    $('#nsPend').innerHTML = pend.map(p => `<li class="pending">
+        <span><strong>${head(p)}</strong>
+          ${p.status === 'erro' ? `<span class="sub">Não foi processado: ${esc(p.erro)}. Confira o estoque e registre a venda à mão se precisar.</span>` : ''}
+          ${(p.itens_pendentes || []).map(i => `<span class="sub">${esc(i.nome)}: ${i.quantidade} ${i.quantidade === 1 ? 'unidade não encontrada' : 'unidades não encontradas'} no estoque (${money(i.preco)} cada). Registre a venda à mão.</span>`).join('')}
+        </span>
+        <span class="row-actions"><button class="btn-link" data-ns-ok="${esc(p.pedido_id)}">Marcar como resolvido</button></span></li>`).join('');
+    $('#nsPendEmpty').hidden = pend.length > 0 || !st.connected;
+    const recent = st.pedidos.slice(0, 15);
+    $('#nsRecent').innerHTML = recent.map(p => {
+        const label = p.status === 'processado' && (p.itens_pendentes || []).length ? NS_STATUS.pendente : NS_STATUS[p.status] || esc(p.status);
+        return `<li><span><strong>${head(p)}</strong><span class="sub">${label}</span></span></li>`;
+    }).join('');
+    $('#nsRecentEmpty').hidden = recent.length > 0 || !st.connected;
+}
+$('#nsStatus').onclick = async e => {
+    if (e.target.id !== 'nsConnect') return;
+    try { location.href = (await api('/nuvemshop/install-url', { method: 'POST' })).url; }
+    catch (err) { toast(err.message, true); }
+};
+$('#nsPend').onclick = async e => {
+    const id = e.target.dataset.nsOk;
+    if (!id) return;
+    try { await api(`/nuvemshop/pedidos/${encodeURIComponent(id)}/resolver`, { method: 'POST' }); toast('Pedido marcado como resolvido.'); await loadNuvemshop(); }
+    catch (err) { toast(err.message, true); }
+};
+// Back from authorizing the app on Nuvemshop (?ns=ok or an error message).
+const nsReturn = new URLSearchParams(location.search).get('ns');
+if (nsReturn) {
+    history.replaceState(null, '', location.pathname + location.hash);
+    setTimeout(() => toast(nsReturn === 'ok' ? 'Nuvemshop conectada. Os próximos pedidos pagos entram sozinhos.' : nsReturn, nsReturn !== 'ok'), 800);
+}
+
 // ---------- Planilha completa ----------
 $('#exportAllBtn').onclick = async () => {
     const btn = $('#exportAllBtn');
@@ -754,7 +774,7 @@ async function start() {
     $('#appView').hidden = false;
     try {
         isAdmin = await api('/admin/users').then(() => true, () => false);
-        $('#tabUsuarios').hidden = !isAdmin;
+        $('#tabUsuarios').hidden = $('#tabNuvem').hidden = !isAdmin;
         oldMonths = await api('/historico').catch(() => []);
         showTab();
         await load();
