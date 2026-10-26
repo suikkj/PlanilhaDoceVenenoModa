@@ -337,7 +337,7 @@ dialog.viewer::backdrop { background: rgb(10 14 9 / .97); }
     padding: max(.75rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) .5rem max(1rem, env(safe-area-inset-left)); }
 .v-title { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
 .v-stage { position: relative; display: grid; place-items: center; overflow: hidden; touch-action: none; min-height: 0; }
-#vImg { max-width: calc(100% - 2rem); max-height: calc(100% - 1rem); object-fit: contain; border-radius: 4px; user-select: none;
+#vImg { position: absolute; inset: 0; margin: auto; max-width: calc(100% - 2rem); max-height: calc(100% - 1rem); object-fit: contain; border-radius: 4px; user-select: none;
     -webkit-user-select: none; -webkit-touch-callout: none; cursor: zoom-in; transition: transform .22s cubic-bezier(.2,.7,.2,1); }
 .viewer.zoomed #vImg { cursor: grab; }
 .v-stage.dragging #vImg { transition: none; }
