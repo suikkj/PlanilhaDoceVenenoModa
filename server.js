@@ -15,7 +15,7 @@ const jwtSecret = process.env.JWT_SECRET;
 const adminEmails = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
 if (!jwtSecret) console.error('CRÍTICO: JWT_SECRET não definido. Login não vai funcionar.');
 // Links in emails always use this address, never the request's Host header (which a caller can forge).
-const APP_URL = (process.env.APP_URL || 'https://planilhadoceveneno.vercel.app').replace(/\/$/, '');
+const APP_URL = (process.env.APP_URL || 'https://planilhadocevenenomoda.vercel.app').replace(/\/$/, '');
 const mailer = process.env.EMAIL_USER && process.env.EMAIL_PASS
     ? nodemailer.createTransport({ service: process.env.EMAIL_SERVICE || 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } })
     : null;
