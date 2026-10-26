@@ -10,7 +10,8 @@ const monthLabel = ym => { const [y, m] = ym.split('-'); return `${MONTHS[m - 1]
 
 let pecas = [];
 let isAdmin = false;
-const filters = { text: '', size: '', color: '', low: false, stale: false };
+const filters = { text: '', size: '', color: '', low: false, stale: false, sort: 'recent' };
+let salesSort = 'recent';
 const selected = new Set();
 
 // ---------- API ----------
@@ -151,6 +152,15 @@ const isStale = p => !!p.data_compra && (Date.now() - new Date(p.data_compra + '
 const hasCol = k => pecas.some(p => k in p);
 const uniq = l => [...new Set(l)];
 const uniqJoin = v => uniq(splitList(v)).join(', ');
+// how: 'recent' | 'old' | 'az'. Rows without a date go last in both date orders.
+function sortRows(rows, how, dateKey) {
+    const byName = (a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR', { sensitivity: 'base' });
+    const d = p => p[dateKey] || (how === 'old' ? '9999' : '');
+    const cmp = how === 'az' ? byName
+        : how === 'old' ? (a, b) => d(a).localeCompare(d(b)) || byName(a, b)
+        : (a, b) => d(b).localeCompare(d(a)) || byName(a, b);
+    return [...rows].sort(cmp);
+}
 
 async function load() {
     pecas = await api('/pecas');
@@ -187,7 +197,7 @@ function renderStock() {
     renderFilters();
 
     const t = filters.text.toLowerCase();
-    const rows = all.filter(p =>
+    const rows = sortRows(all, filters.sort, 'data_compra').filter(p =>
         (!t || `${p.nome} ${p.cor || ''}`.toLowerCase().includes(t)) &&
         (!filters.size || splitList(p.tamanho).some(t => t.toUpperCase() === filters.size)) &&
         (!filters.color || splitList(p.cor).includes(filters.color)) &&
@@ -232,6 +242,8 @@ $('#search').oninput = e => { filters.text = e.target.value.trim(); renderStock(
 $('#colorFilter').onchange = e => { filters.color = e.target.value; renderStock(); };
 $('#lowOnly').onchange = e => { filters.low = e.target.checked; renderStock(); };
 $('#staleOnly').onchange = e => { filters.stale = e.target.checked; renderStock(); };
+$('#stockSort').onchange = e => { filters.sort = e.target.value; renderStock(); };
+$('#salesSort').onchange = e => { salesSort = e.target.value; renderSales(); };
 $('#sizeChips').onclick = e => {
     const b = e.target.closest('button');
     if (b) { filters.size = b.dataset.size; renderStock(); }
@@ -579,8 +591,7 @@ function renderSales() {
         <span class="bar" style="--h:${Math.round(Math.abs(totals[k].lucro) / max * 100)}%"></span>
         <span class="bar-label">${monthLabel(k).replace(' ', '<br>')}</span></button>`).join('');
 
-    const rows = sold().filter(p => month === 'all' || (p.data_venda || '').startsWith(month))
-        .sort((a, b) => (b.data_venda || '').localeCompare(a.data_venda || ''));
+    const rows = sortRows(sold().filter(p => month === 'all' || (p.data_venda || '').startsWith(month)), salesSort, 'data_venda');
     $('#salesTable tbody').innerHTML = rows.map(p => {
         const l = saleProfit(p);
         return `<tr>

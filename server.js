@@ -19,8 +19,9 @@ const APP_URL = (process.env.APP_URL || 'https://planilhadoceveneno.vercel.app')
 const mailer = process.env.EMAIL_USER && process.env.EMAIL_PASS
     ? nodemailer.createTransport({ service: process.env.EMAIL_SERVICE || 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } })
     : null;
+// `to` is an address, or { to, bcc } for mass sends.
 const sendMail = (to, subject, text, attachments) =>
-    mailer.sendMail({ from: `Doce Veneno Estoque <${process.env.EMAIL_USER}>`, to, subject, text, attachments });
+    mailer.sendMail({ from: `Doce Veneno Estoque <${process.env.EMAIL_USER}>`, ...(typeof to === 'string' ? { to } : to), subject, text, attachments });
 // Fingerprint of the current password hash: a reset link stops working once the password changes.
 const pwTag = hash => crypto.createHash('sha256').update(String(hash)).digest('hex').slice(0, 16);
 
@@ -204,20 +205,23 @@ app.get('/api/export', auth, route(async (req, res) => {
 // Called by Vercel Cron (see vercel.json). Vercel sends "Authorization: Bearer <CRON_SECRET>".
 app.get('/api/cron/backup', route(async (req, res) => {
     if (!process.env.CRON_SECRET || req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) return res.sendStatus(401);
-    if (!mailer || !adminEmails.length) return res.status(503).json({ message: 'Configure EMAIL_USER, EMAIL_PASS e ADMIN_EMAIL para receber o backup.' });
+    if (!mailer) return res.status(503).json({ message: 'Configure EMAIL_USER e EMAIL_PASS para enviar o backup.' });
     const [pecas, historico, usuarios] = await Promise.all([
         allPecas(),
         supabase.from('historico_mensal').select('*').then(check),
         supabase.from('usuarios').select('id, email, status, created_at').then(check), // never the password hashes
     ]);
+    // Every approved account plus the admins; sent as Bcc so recipients don't see each other's addresses.
+    const recipients = [...new Set([...usuarios.filter(u => u.status === 'active').map(u => u.email.toLowerCase()), ...adminEmails])];
+    if (!recipients.length) return res.status(503).json({ message: 'Nenhum usuário ativo para receber o backup.' });
     const day = new Date().toISOString().slice(0, 10);
     const emEstoque = pecas.filter(p => p.status !== 'vendida').reduce((n, p) => n + (Number(p.quantidade) || 0), 0);
-    await sendMail(adminEmails.join(','), `Backup semanal Doce Veneno ${day.split('-').reverse().join('/')}`,
+    await sendMail({ to: process.env.EMAIL_USER, bcc: recipients }, `Backup semanal Doce Veneno ${day.split('-').reverse().join('/')}`,
         `Backup automático do estoque.\n\n${emEstoque} peças em estoque, ${pecas.length} registros no total.\n\n` +
         `A planilha abre no Excel. O arquivo .json guarda tudo para restaurar o sistema se for preciso; guarde-o em lugar seguro.`,
         [{ filename: `doce-veneno-${day}.csv`, content: fullCsv(pecas) },
          { filename: `doce-veneno-backup-${day}.json`, content: JSON.stringify({ geradoEm: new Date().toISOString(), pecas, historico_mensal: historico, usuarios }, null, 2) }]);
-    res.json({ message: 'Backup enviado.' });
+    res.json({ message: `Backup enviado para ${recipients.length} ${recipients.length === 1 ? 'pessoa' : 'pessoas'}.` });
 }));
 
 if (require.main === module) {

@@ -118,6 +118,7 @@ button:disabled { opacity: .6; cursor: wait; }
 .toolbar { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: center; margin-bottom: 1rem; }
 .toolbar input[type=search] { flex: 1 1 240px; width: auto; }
 .toolbar select { width: auto; flex: 0 0 auto; }
+.toolbar-end { justify-content: flex-end; margin-bottom: .75rem; }
 .check { display: flex; align-items: center; gap: .45rem; color: var(--ink); font-size: 1rem; cursor: pointer; }
 .chips { display: flex; flex-wrap: wrap; gap: .35rem; }
 .chips button {

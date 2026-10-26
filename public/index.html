@@ -66,6 +66,7 @@
       <input type="search" id="search" placeholder="Buscar por nome ou cor" aria-label="Buscar por nome ou cor">
       <div class="chips" id="sizeChips" role="group" aria-label="Filtrar por tamanho"></div>
       <select id="colorFilter" aria-label="Filtrar por cor"><option value="">Todas as cores</option></select>
+      <select id="stockSort" aria-label="Ordenar estoque"><option value="recent">Mais recentes primeiro</option><option value="old">Mais antigas primeiro</option><option value="az">Nome (A a Z)</option></select>
       <label class="check"><input type="checkbox" id="lowOnly"> Só estoque baixo</label>
       <label class="check"><input type="checkbox" id="staleOnly"> Paradas há mais de 60 dias</label>
     </div>
@@ -103,6 +104,10 @@
     <div class="months" id="monthBars" aria-label="Lucro por mês"></div>
 
     <div class="ranks" id="ranks"></div>
+
+    <div class="toolbar toolbar-end">
+      <select id="salesSort" aria-label="Ordenar vendas"><option value="recent">Mais recentes primeiro</option><option value="old">Mais antigas primeiro</option><option value="az">Nome (A a Z)</option></select>
+    </div>
 
     <div class="table-wrap">
       <table class="grid" id="salesTable">
