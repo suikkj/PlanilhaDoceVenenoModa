@@ -131,29 +131,40 @@ app.post('/api/pecas', auth, route(async (req, res) => {
     if (!peca.nome || peca.preco_venda == null || !peca.quantidade) {
         return res.status(400).json({ message: 'Nome, quantidade e preço de venda são obrigatórios.' });
     }
-    res.status(201).json(check(await supabase.from('pecas').insert([peca]).select('*'))[0]);
+    const row = check(await supabase.from('pecas').insert([peca]).select('*'))[0];
+    await nuvem.afterChange([row.nome]);
+    res.status(201).json(row);
 }));
+// Names of the given rows, read before a change so a rename or delete also updates the old Nuvemshop product.
+const namesOf = async ids => check(await supabase.from('pecas').select('nome').in('id', ids.map(String))).map(r => r.nome);
 
 app.patch('/api/pecas/batch', auth, route(async (req, res) => {
     const { ids, updates, action } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'Nenhuma peça selecionada.' });
+    const names = await namesOf(ids);
     if (action === 'delete') {
         check(await supabase.from('pecas').delete().in('id', ids));
+        await nuvem.afterChange(names);
         return res.json({ message: 'Peças apagadas.' });
     }
     if (!updates) return res.status(400).json({ message: 'Nada para atualizar.' });
     check(await supabase.from('pecas').update(pick(updates)).in('id', ids));
+    await nuvem.afterChange([...names, updates.nome]);
     res.json({ message: 'Peças atualizadas.' });
 }));
 
 app.put('/api/pecas/:id', auth, route(async (req, res) => {
+    const before = await namesOf([req.params.id]);
     const rows = check(await supabase.from('pecas').update(pick(req.body)).eq('id', req.params.id).select('*'));
     if (!rows.length) return res.status(404).json({ message: 'Peça não encontrada.' });
+    await nuvem.afterChange([...before, rows[0].nome]);
     res.json(rows[0]);
 }));
 
 app.delete('/api/pecas/:id', auth, route(async (req, res) => {
+    const before = await namesOf([req.params.id]);
     check(await supabase.from('pecas').delete().eq('id', req.params.id));
+    await nuvem.afterChange(before);
     res.json({ message: 'Peça apagada.' });
 }));
 
@@ -225,7 +236,8 @@ app.get('/api/cron/backup', route(async (req, res) => {
     res.json({ message: `Backup enviado para ${recipients.length} ${recipients.length === 1 ? 'pessoa' : 'pessoas'}.` });
 }));
 
-require('./nuvemshop')(app, { supabase, check, route, auth, adminOnly, jwtSecret, APP_URL });
+// Defined last because it registers its own routes; the piece routes above call nuvem.afterChange at request time.
+const nuvem = require('./nuvemshop')(app, { supabase, check, route, auth, adminOnly, jwtSecret, APP_URL });
 
 if (require.main === module) {
     const port = process.env.PORT || 3000;

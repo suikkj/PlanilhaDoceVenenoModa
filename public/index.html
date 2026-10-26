@@ -125,6 +125,14 @@
   <section id="view-nuvemshop" class="view" hidden>
     <h2 class="view-title">Nuvemshop</h2>
     <div class="ns-status" id="nsStatus"></div>
+    <section id="nsProdBox" hidden>
+      <h3 class="sub-title">Produtos na loja online</h3>
+      <div class="ns-status">
+        <p id="nsProdText"></p>
+        <button class="btn btn-primary" id="nsSyncAll">Enviar todo o estoque para a Nuvemshop</button>
+      </div>
+      <ul class="users" id="nsProdErr"></ul>
+    </section>
     <h3 class="sub-title">Pendências</h3>
     <ul class="users" id="nsPend"></ul>
     <p class="empty" id="nsPendEmpty" hidden>Nenhuma pendência. Todos os pedidos pagos foram encontrados no estoque.</p>

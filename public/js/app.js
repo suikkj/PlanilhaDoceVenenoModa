@@ -716,6 +716,16 @@ async function loadNuvemshop() {
     else if (st.needsMigration) box.innerHTML = '<p>Falta criar a tabela da integração: rode o SQL da Nuvemshop no Supabase (SQL Editor) e recarregue esta página.</p>';
     else if (!st.webhooksOk) box.innerHTML = `<p><strong>Loja ${esc(st.storeName || st.storeId)} encontrada.</strong> Falta ativar os avisos para que os pedidos pagos entrem aqui sozinhos.</p><button class="btn btn-primary" id="nsSetup">Ativar avisos de pedidos</button>`;
     else box.innerHTML = `<p><strong>Conectada à loja ${esc(st.storeName || st.storeId)}.</strong> Pedidos pagos entram sozinhos como vendas; pedidos cancelados voltam ao estoque.</p>`;
+    const prod = st.produtos;
+    $('#nsProdBox').hidden = !st.configured || !!st.apiError || st.needsMigration || !prod;
+    if (prod) {
+        $('#nsProdText').textContent = prod.enviados
+            ? `${prod.enviados} ${prod.enviados === 1 ? 'produto ligado' : 'produtos ligados'} à loja. Peças novas, vendas e edições daqui atualizam o estoque de lá sozinhas. Produtos novos entram ocultos: publique na Nuvemshop depois de pôr fotos e descrição.`
+            : 'Nenhuma peça enviada ainda. Envie o estoque atual uma vez; depois, cada peça nova vai sozinha, oculta para você revisar antes de publicar.';
+        $('#nsProdErr').innerHTML = prod.erros.map(e => `<li class="pending">
+            <span><strong>${esc(e.nome)}</strong><span class="sub">${esc(e.erro)}</span></span>
+            <span class="row-actions"><button class="btn-link" data-ns-sync="${esc(e.nome)}">Sincronizar de novo</button></span></li>`).join('');
+    }
     const pend = st.pedidos.filter(p => p.status === 'erro' || (p.itens_pendentes || []).length);
     $('#nsBadge').hidden = !pend.length;
     $('#nsBadge').textContent = pend.length;
@@ -739,6 +749,30 @@ $('#nsStatus').onclick = async e => {
     e.target.disabled = true;
     try { toast((await api('/nuvemshop/setup', { method: 'POST' })).message); await loadNuvemshop(); }
     catch (err) { toast(err.message, true); e.target.disabled = false; }
+};
+$('#nsSyncAll').onclick = async () => {
+    const btn = $('#nsSyncAll');
+    if (!await confirmAction('Enviar estoque', 'Cada nome de peça vira um produto oculto na Nuvemshop, com as cores e tamanhos como variações e o estoque daqui. Produtos com o mesmo nome que já existem lá são atualizados, não duplicados. Continuar?', 'Enviar')) return;
+    btn.disabled = true;
+    try {
+        let next = 0;
+        while (next !== null) {
+            const r = await api('/nuvemshop/sync-all', { method: 'POST', body: { offset: next } });
+            btn.textContent = `Enviando ${r.done} de ${r.total}…`;
+            next = r.next;
+            if (next !== null) await new Promise(ok => setTimeout(ok, 1500)); // stay under Nuvemshop's rate limit
+        }
+        toast('Estoque enviado para a Nuvemshop.');
+    } catch (err) { toast(err.message, true); }
+    finally { btn.disabled = false; btn.textContent = 'Enviar todo o estoque para a Nuvemshop'; await loadNuvemshop(); }
+};
+$('#nsProdErr').onclick = async e => {
+    const nome = e.target.dataset.nsSync;
+    if (!nome) return;
+    e.target.disabled = true;
+    try { const r = await api('/nuvemshop/produtos/sync', { method: 'POST', body: { nome } }); toast(r.message, !r.ok); }
+    catch (err) { toast(err.message, true); }
+    await loadNuvemshop();
 };
 $('#nsPend').onclick = async e => {
     const id = e.target.dataset.nsOk;

@@ -2,7 +2,7 @@
 // Pieces are matched by name + color + size. Anything that doesn't match is kept as a pending item for the admin.
 // Uses a store "aplicativo sob medida": NUVEMSHOP_TOKEN and NUVEMSHOP_STORE_ID come from the Vercel variables.
 const crypto = require('crypto');
-const { stockUnits, available, afterSale } = require('./public/js/variants.js');
+const { stockUnits, available, afterSale, splitList } = require('./public/js/variants.js');
 
 const API = 'https://api.nuvemshop.com.br/2025-03';
 const UA = 'Doce Veneno Estoque (lucasoliprogramador@gmail.com)';
@@ -37,7 +37,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
     const hookKey = crypto.createHmac('sha256', String(jwtSecret)).update('nuvemshop-webhook').digest('hex').slice(0, 32);
     const hookUrl = `${APP_URL}/api/nuvemshop/webhook?key=${hookKey}`;
     const EVENTS = ['order/paid', 'order/cancelled'];
-    async function ns(path, { method = 'GET', body } = {}) {
+    async function ns(path, { method = 'GET', body } = {}, retried) {
         const res = await fetch(`${API}/${cfg.store_id}${path}`, {
             method,
             headers: {
@@ -46,6 +46,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
             },
             body: body && JSON.stringify(body),
         });
+        if (res.status === 429 && !retried) { await new Promise(r => setTimeout(r, 1500)); return ns(path, { method, body }, true); } // rate limit: wait and retry once
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw Object.assign(new Error(`Nuvemshop ${res.status}: ${data.description || data.message || res.statusText}`), { status: res.status });
         return data;
@@ -73,6 +74,103 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         const rest = afterSale(stock, cor, tam, q);
         check(await supabase.from('pecas').update({ quantidade: p.quantidade - q, ...rest }).eq('id', p.id));
         Object.assign(p, { quantidade: p.quantidade - q, ...rest }); // later items of the same order see the new stock
+    }
+
+    // ===================== Site → Nuvemshop: products and stock =====================
+    // One Nuvemshop product per piece name (rows with the same name are merged); one variant per color+size.
+    // The site is the source of truth: every change here sets the product's variant stock to what is in stock here.
+    const FILL = { cor: 'Única', tam: 'Único' }; // value used when a product has the attribute but the unit has none
+    const valOf = v => (v && typeof v === 'object' ? v.pt ?? Object.values(v)[0] : v) ?? '';
+    // One entry per unit, read the same way as the edit grade (a single value applies to every unit).
+    function unitsOf(p) {
+        const c = splitList(p.cor), t = splitList(p.tamanho), n = Number(p.quantidade) || 0;
+        const at = (l, i) => l.length === 1 ? l[0] : (l[i] || '');
+        return Array.from({ length: n }, (_, i) => ({ cor: at(c, i), tam: at(t, i) }));
+    }
+    const comboKey = (cor, tam) => `${norm(cor)}|${norm(tam)}`;
+    const money2 = v => (Number(v) || 0).toFixed(2);
+
+    async function syncName(nome) {
+        const key = norm(nome);
+        const rows = check(await supabase.from('pecas').select('*'))
+            .filter(p => p.status !== 'vendida' && Number(p.quantidade) > 0 && norm(p.nome) === key);
+        const want = new Map();
+        for (const p of rows) for (const u of unitsOf(p)) {
+            const k = comboKey(u.cor, u.tam);
+            const w = want.get(k) || { cor: u.cor, tam: u.tam, stock: 0, price: 0, cost: 0 };
+            w.stock++; w.price = Math.max(w.price, Number(p.preco_venda) || 0); w.cost = Math.max(w.cost, Number(p.preco_comprado_unitario) || 0);
+            want.set(k, w);
+        }
+        let map = check(await supabase.from('nuvemshop_produtos').select('*').eq('nome', key).maybeSingle());
+        let productId = map?.product_id;
+        if (!productId) {
+            if (!want.size) { if (map) check(await supabase.from('nuvemshop_produtos').update({ erro: null }).eq('nome', key)); return 'sem-estoque'; }
+            // Reuse a product that already exists on the store with the same name instead of duplicating it.
+            const found = (await ns(`/products?q=${encodeURIComponent(rows[0].nome)}&per_page=50`)).find(pr => norm(valOf(pr.name)) === key);
+            if (found) productId = String(found.id);
+            else {
+                if (!map) { // claim the name so two simultaneous changes don't create two products
+                    const c = await supabase.from('nuvemshop_produtos').insert([{ nome: key }]);
+                    if (c.error) { if (c.error.code === '23505') return 'em-andamento'; throw c.error; }
+                }
+                const attrs = [...([...want.values()].some(v => v.cor) ? ['Cor'] : []), ...([...want.values()].some(v => v.tam) ? ['Tamanho'] : [])];
+                const created = await ns('/products', { method: 'POST', body: {
+                    name: { pt: rows[0].nome }, published: false, attributes: attrs.map(a => ({ pt: a })),
+                    variants: [...want.values()].map(v => ({
+                        price: money2(v.price), stock: v.stock, ...(v.cost > 0 && { cost: money2(v.cost) }),
+                        ...(attrs.length && { values: attrs.map(a => ({ pt: a === 'Cor' ? v.cor || FILL.cor : v.tam || FILL.tam })) }),
+                    })),
+                } });
+                check(await supabase.from('nuvemshop_produtos').update({ product_id: String(created.id), erro: null, updated_at: new Date().toISOString() }).eq('nome', key));
+                return 'criado';
+            }
+            check(await supabase.from('nuvemshop_produtos').upsert([{ nome: key, product_id: productId, erro: null, updated_at: new Date().toISOString() }]));
+        }
+        const product = await ns(`/products/${productId}`);
+        const names = (product.attributes || []).map(a => norm(valOf(a)));
+        let iCor = names.findIndex(a => /^(cor|color|colour)/.test(a)), iTam = names.findIndex(a => /^(tam|size|talla|talle)/.test(a));
+        if (iCor < 0 && iTam < 0 && names.length) { iCor = 0; iTam = names.length > 1 ? 1 : -1; } // unknown names: assume color, size
+        const unfill = (v, f) => norm(v) === norm(f) ? '' : v;
+        const keyOfVariant = v => {
+            const vals = (v.values || []).map(valOf);
+            return comboKey(iCor >= 0 ? unfill(vals[iCor], FILL.cor) : '', iTam >= 0 ? unfill(vals[iTam], FILL.tam) : '');
+        };
+        const updates = [], problems = [], seen = new Set();
+        for (const v of product.variants || []) {
+            const k = keyOfVariant(v), w = want.get(k);
+            seen.add(k);
+            // Sold-out combinations keep their variant (and photos) with stock 0.
+            updates.push({ id: v.id, stock: w ? w.stock : 0, ...(w && { price: money2(w.price) }) });
+        }
+        for (const [k, w] of want) {
+            if (seen.has(k)) continue;
+            if ((w.cor && iCor < 0) || (w.tam && iTam < 0) || !names.length) {
+                problems.push(`${[w.cor, w.tam].filter(Boolean).join(' ') || 'sem variação'}: o produto na Nuvemshop não tem ${w.cor && iCor < 0 ? 'a opção Cor' : w.tam && iTam < 0 ? 'a opção Tamanho' : 'variações'}`);
+                continue;
+            }
+            const values = names.map((_, i) => ({ pt: i === iCor ? w.cor || FILL.cor : i === iTam ? w.tam || FILL.tam : '-' }));
+            const nv = await ns(`/products/${productId}/variants`, { method: 'POST', body: { values, price: money2(w.price), ...(w.cost > 0 && { cost: money2(w.cost) }) } });
+            updates.push({ id: nv.id, stock: w.stock });
+        }
+        if (updates.length) await ns(`/products/${productId}/variants`, { method: 'PATCH', body: updates });
+        const erro = problems.length ? `Ajuste à mão na Nuvemshop: ${problems.join('; ')}.` : null;
+        check(await supabase.from('nuvemshop_produtos').update({ erro, updated_at: new Date().toISOString() }).eq('nome', key));
+        return erro ? 'parcial' : 'atualizado';
+    }
+
+    // Called after any stock change here. Never throws: a Nuvemshop failure must not block a sale in the shop.
+    async function afterChange(names) {
+        if (!cfg) return;
+        for (const nome of [...new Set(names.filter(Boolean).map(String))]) {
+            try { await syncName(nome); }
+            catch (err) {
+                if (err.code === 'PGRST205' || err.code === '42P01') return; // integration tables not created yet
+                // update keeps the product link; insert only when the name has no row yet
+                const erro = `Não sincronizou: ${String(err.message).slice(0, 300)}`, updated_at = new Date().toISOString();
+                const upd = await supabase.from('nuvemshop_produtos').update({ erro, updated_at }).eq('nome', norm(nome)).select('nome');
+                if (!upd.error && !upd.data?.length) await supabase.from('nuvemshop_produtos').insert([{ nome: norm(nome), erro, updated_at }]);
+            }
+        }
     }
 
     async function processPaid(orderId) {
@@ -106,6 +204,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
                 status: 'processado', numero: String(order.number ?? ''), data_venda: spDate(order.paid_at),
                 cliente: order.customer?.name || order.contact_name || null, itens_pendentes: pendentes,
             }).eq('pedido_id', String(orderId)));
+            await afterChange(order.products.map(baseName)); // Nuvemshop stock = stock here, also after concurrent shop sales
             return pendentes.length ? 'pendente' : 'ok';
         } catch (err) {
             // Keep the claim (a retry could double-sell what already went through); the admin sees the error.
@@ -130,6 +229,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
             }).eq('id', r.id));
         }
         check(await supabase.from('nuvemshop_pedidos').update({ status: 'cancelado', itens_pendentes: [] }).eq('pedido_id', String(orderId)));
+        await afterChange(rows.map(r => r.nome));
         return 'cancelado';
     }
 
@@ -170,13 +270,42 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
                 out.webhooksOk = EVENTS.every(e => hooks.some(w => w.event === e && w.url === hookUrl));
             } catch (err) { out.apiError = err.message; }
         }
+        try {
+            const prods = check(await supabase.from('nuvemshop_produtos').select('*'));
+            const display = new Map(check(await supabase.from('pecas').select('nome')).map(p => [norm(p.nome), p.nome])); // rows are keyed by the normalized name
+            out.produtos = { enviados: prods.filter(p => p.product_id).length, erros: prods.filter(p => p.erro).map(p => ({ nome: display.get(p.nome) || p.nome, erro: p.erro })) };
+        } catch { out.produtos = null; }
         res.json(out);
+    }));
+
+    // Sends the whole stock in small batches; the page calls it repeatedly with the returned offset.
+    app.post('/api/nuvemshop/sync-all', auth, adminOnly, route(async (req, res) => {
+        if (!cfg) return res.status(503).json({ message: 'Configure NUVEMSHOP_TOKEN e NUVEMSHOP_STORE_ID na Vercel.' });
+        const offset = Math.max(0, parseInt(req.body.offset, 10) || 0);
+        const pecas = check(await supabase.from('pecas').select('nome, status, quantidade'));
+        const mapped = check(await supabase.from('nuvemshop_produtos').select('nome'));
+        const byKey = new Map();
+        for (const p of pecas) if (p.status !== 'vendida' && Number(p.quantidade) > 0 && !byKey.has(norm(p.nome))) byKey.set(norm(p.nome), p.nome);
+        for (const m of mapped) if (!byKey.has(m.nome)) byKey.set(m.nome, m.nome); // sold-out products go to stock 0
+        const all = [...byKey.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        const BATCH = 6;
+        await afterChange(all.slice(offset, offset + BATCH));
+        const next = offset + BATCH;
+        res.json({ total: all.length, done: Math.min(next, all.length), next: next < all.length ? next : null });
+    }));
+
+    app.post('/api/nuvemshop/produtos/sync', auth, adminOnly, route(async (req, res) => {
+        await afterChange([String(req.body.nome || '')]);
+        const row = check(await supabase.from('nuvemshop_produtos').select('erro').eq('nome', norm(req.body.nome)).maybeSingle());
+        res.json({ ok: !row?.erro, message: row?.erro || 'Produto sincronizado.' });
     }));
 
     app.post('/api/nuvemshop/pedidos/:id/resolver', auth, adminOnly, route(async (req, res) => {
         check(await supabase.from('nuvemshop_pedidos').update({ status: 'resolvido', itens_pendentes: [], erro: null }).eq('pedido_id', req.params.id));
         res.json({ message: 'Pedido marcado como resolvido.' });
     }));
+
+    return { afterChange };
 };
 module.exports.matchingCombos = matchingCombos;
 module.exports.baseName = baseName;
