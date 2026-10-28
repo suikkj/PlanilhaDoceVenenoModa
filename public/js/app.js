@@ -239,7 +239,7 @@ function renderStock() {
         const low = p.quantidade <= LOW_STOCK;
         return `<tr class="${low ? 'low' : ''}">
           <td class="c-check"><input type="checkbox" data-id="${p.id}" ${selected.has(p.id) ? 'checked' : ''} aria-label="Selecionar ${esc(p.nome)}"></td>
-          <td><div class="peca-cell">${p.fotos?.length ? `<button type="button" class="thumb-btn" data-fotos="${p.id}" aria-label="Ver ${p.fotos.length} ${p.fotos.length === 1 ? 'foto' : 'fotos'} de ${esc(p.nome)}"><img class="thumb" src="${esc(p.fotos[0].url)}" alt="" loading="lazy" onerror="this.parentElement.remove()">${p.fotos.length > 1 ? `<span class="thumb-count">${p.fotos.length}</span>` : ''}</button>` : ''}<span><strong>${esc(p.nome)}</strong>${p.cor ? `<span class="sub">${esc(uniqJoin(p.cor))}</span>` : ''}</span></div></td>
+          <td><div class="peca-cell">${p.fotos?.length ? `<button type="button" class="thumb-btn" data-fotos="${p.id}" aria-label="Ver ${p.fotos.length} ${p.fotos.length === 1 ? 'foto' : 'fotos'} de ${esc(p.nome)}"><img class="thumb" src="${esc(p.fotos[0].url)}" alt="" loading="lazy" onerror="this.parentElement.remove()">${p.fotos.length > 1 ? `<span class="thumb-count">${p.fotos.length}</span>` : ''}</button>` : ''}<button type="button" class="peca-btn" data-info="${p.id}" aria-label="Ver descrição de ${esc(p.nome)}"><strong>${esc(p.nome)}</strong>${p.cor ? `<span class="sub">${esc(uniqJoin(p.cor))}</span>` : ''}</button></div></td>
           <td data-l="Tam.">${esc(uniqJoin(p.tamanho)) || '–'}</td>
           <td class="num" data-l="Qtd."><span>${p.quantidade}${low ? '<span class="tag">baixo</span>' : ''}</span></td>
           <td class="num" data-l="Compra">${money(p.preco_comprado_unitario)}</td>
@@ -286,6 +286,8 @@ $('#selectAll').onchange = e => {
 $('#stockTable tbody').onclick = e => {
     const t = e.target, fotosBtn = t.closest('[data-fotos]');
     if (fotosBtn) { const p = pecas.find(x => x.id === +fotosBtn.dataset.fotos); openViewer(p.fotos.map(f => f.url), 0, p.nome); return; }
+    const infoBtn = t.closest('[data-info]');
+    if (infoBtn) { const p = pecas.find(x => x.id === +infoBtn.dataset.info); showInfo(p.nome, p.descricao || 'Esta peça ainda não tem descrição. Use Editar para adicionar.'); return; }
     if (t.dataset.id) { t.checked ? selected.add(+t.dataset.id) : selected.delete(+t.dataset.id); renderBulk(); }
     if (t.dataset.sell) openSell(pecas.find(p => p.id === +t.dataset.sell));
     if (t.dataset.edit) openPeca(pecas.find(p => p.id === +t.dataset.edit));
