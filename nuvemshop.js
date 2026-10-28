@@ -76,6 +76,30 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         Object.assign(p, { quantidade: p.quantidade - q, ...rest }); // later items of the same order see the new stock
     }
 
+    // Description sent to the store: the piece's text, plus its measurements when filled in.
+    const escHtml = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    function descOf(named) {
+        const d = named.find(p => p.descricao)?.descricao, m = named.find(p => p.medidas)?.medidas;
+        if (!m) return d; // unchanged for pieces without measurements, so existing descriptions are not re-sent
+        return [d, `Medidas da peça: ${m}`].filter(Boolean).map(t => `<p>${escHtml(t)}</p>`).join('');
+    }
+    // New products go into the category the first word of the name points to (categories created in the store).
+    const CAT_BY_WORD = { vestido: 'Vestidos', conjunto: 'Conjuntos', 'conj.': 'Conjuntos', trijunto: 'Conjuntos', blusa: 'Blusas e Regatas',
+        regata: 'Blusas e Regatas', camisa: 'Blusas e Regatas', 't-shirt': 'Blusas e Regatas', poncho: 'Blusas e Regatas', blazer: 'Blusas e Regatas',
+        body: 'Bodies e Croppeds', cropped: 'Bodies e Croppeds', top: 'Bodies e Croppeds', 'calça': 'Calças', legging: 'Calças',
+        saia: 'Saias e Shorts', short: 'Saias e Shorts', 'cinta/short': 'Saias e Shorts', 'macacão': 'Macacões', macaquinho: 'Macacões',
+        cinto: 'Cintos', cintos: 'Cintos', meia: 'Meias-calças' };
+    let catCache = null;
+    async function categoryFor(nome) {
+        const want = CAT_BY_WORD[String(nome).trim().split(/\s+/)[0].toLowerCase()];
+        if (!want) return {};
+        try {
+            catCache ||= await ns('/categories?per_page=200');
+            const c = catCache.find(c => norm(valOf(c.name)) === norm(want));
+            return c ? { categories: [c.id] } : {};
+        } catch { return {}; } // no category is better than a failed product
+    }
+
     // ===================== Site → Nuvemshop: products and stock =====================
     // One Nuvemshop product per piece name (rows with the same name are merged); one variant per color+size.
     // The site is the source of truth: every change here sets the product's variant stock to what is in stock here.
@@ -114,7 +138,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         const named = check(await supabase.from('pecas').select('*')).filter(p => norm(p.nome) === key);
         const rows = named.filter(p => p.status !== 'vendida' && Number(p.quantidade) > 0);
         // Photos of every row with this name, sold ones included, so a product keeps its photos while restocking.
-        const desc = named.find(p => p.descricao)?.descricao;
+        const desc = descOf(named);
         const fotos = [...new Map(named.flatMap(p => p.fotos || []).map(f => [f.path, f])).values()];
         const want = new Map();
         for (const p of rows) for (const u of unitsOf(p)) {
@@ -137,7 +161,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
                 }
                 const attrs = [...([...want.values()].some(v => v.cor) ? ['Cor'] : []), ...([...want.values()].some(v => v.tam) ? ['Tamanho'] : [])];
                 const created = await ns('/products', { method: 'POST', body: {
-                    name: { pt: rows[0].nome }, ...(desc && { description: { pt: desc } }), published: false, attributes: attrs.map(a => ({ pt: a })),
+                    name: { pt: rows[0].nome }, ...(desc && { description: { pt: desc } }), ...(await categoryFor(rows[0].nome)), published: false, attributes: attrs.map(a => ({ pt: a })),
                     variants: [...want.values()].map(v => ({
                         price: money2(v.price), stock: v.stock, ...(v.cost > 0 && { cost: money2(v.cost) }),
                         ...(attrs.length && { values: attrs.map(a => ({ pt: a === 'Cor' ? v.cor || FILL.cor : v.tam || FILL.tam })) }),

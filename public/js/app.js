@@ -289,7 +289,7 @@ $('#stockTable tbody').onclick = e => {
     const t = e.target, fotosBtn = t.closest('[data-fotos]');
     if (fotosBtn) { const p = pecas.find(x => x.id === +fotosBtn.dataset.fotos); openViewer(p.fotos.map(f => f.url), 0, p.nome); return; }
     const infoBtn = t.closest('[data-info]');
-    if (infoBtn) { const p = pecas.find(x => x.id === +infoBtn.dataset.info); showInfo(p.nome, p.descricao || 'Esta peça ainda não tem descrição. Use Editar para adicionar.'); return; }
+    if (infoBtn) { const p = pecas.find(x => x.id === +infoBtn.dataset.info); showInfo(p.nome, [p.descricao || 'Esta peça ainda não tem descrição. Use Editar para adicionar.', p.medidas && `Medidas da peça: ${p.medidas}`].filter(Boolean).join('\n\n')); return; }
     if (t.dataset.id) { t.checked ? selected.add(+t.dataset.id) : selected.delete(+t.dataset.id); renderBulk(); }
     if (t.dataset.sell) openSell(pecas.find(p => p.id === +t.dataset.sell));
     if (t.dataset.edit) openPeca(pecas.find(p => p.id === +t.dataset.edit));
@@ -297,7 +297,7 @@ $('#stockTable tbody').onclick = e => {
 
 // Nova / editar peça
 let editing = null;
-const pecaFields = { fNome: 'nome', fData: 'data_compra', fCompra: 'preco_comprado_unitario', fVenda: 'preco_venda', fForn: 'fornecedor', fDesc: 'descricao' };
+const pecaFields = { fNome: 'nome', fData: 'data_compra', fCompra: 'preco_comprado_unitario', fVenda: 'preco_venda', fForn: 'fornecedor', fDesc: 'descricao', fMed: 'medidas' };
 
 // Grade: one row per color/size combination; saved as the per-unit comma lists the rest of the app uses.
 function gradeFromPiece(p) {
@@ -395,6 +395,7 @@ $('#pecaForm').onsubmit = async e => {
     };
     if (hasCol('fornecedor')) d.fornecedor = $('#fForn').value.trim() || null;
     d.descricao = $('#fDesc').value.trim() || null;
+    d.medidas = $('#fMed').value.trim() || null;
     const err = !d.nome ? 'Informe o nome da peça.'
         : gradeError(grade)
         || (!d.data_compra ? 'Informe a data da compra.'
