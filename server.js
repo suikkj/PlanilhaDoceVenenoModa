@@ -41,7 +41,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Only these columns can be written from the browser.
 const PECA_FIELDS = ['nome', 'quantidade', 'preco_comprado_unitario', 'preco_venda', 'cor', 'tamanho',
     'data_compra', 'status', 'data_venda', 'desconto', 'lucro',
-    'forma_pagamento', 'cliente_nome', 'cliente_telefone', 'fornecedor'];
+    'forma_pagamento', 'cliente_nome', 'cliente_telefone', 'fornecedor', 'descricao'];
 const pick = (obj = {}) => Object.fromEntries(Object.entries(obj).filter(([k]) => PECA_FIELDS.includes(k)));
 const isAdmin = email => adminEmails.includes(String(email).toLowerCase());
 

@@ -114,6 +114,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         const named = check(await supabase.from('pecas').select('*')).filter(p => norm(p.nome) === key);
         const rows = named.filter(p => p.status !== 'vendida' && Number(p.quantidade) > 0);
         // Photos of every row with this name, sold ones included, so a product keeps its photos while restocking.
+        const desc = named.find(p => p.descricao)?.descricao;
         const fotos = [...new Map(named.flatMap(p => p.fotos || []).map(f => [f.path, f])).values()];
         const want = new Map();
         for (const p of rows) for (const u of unitsOf(p)) {
@@ -136,7 +137,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
                 }
                 const attrs = [...([...want.values()].some(v => v.cor) ? ['Cor'] : []), ...([...want.values()].some(v => v.tam) ? ['Tamanho'] : [])];
                 const created = await ns('/products', { method: 'POST', body: {
-                    name: { pt: rows[0].nome }, published: false, attributes: attrs.map(a => ({ pt: a })),
+                    name: { pt: rows[0].nome }, ...(desc && { description: { pt: desc } }), published: false, attributes: attrs.map(a => ({ pt: a })),
                     variants: [...want.values()].map(v => ({
                         price: money2(v.price), stock: v.stock, ...(v.cost > 0 && { cost: money2(v.cost) }),
                         ...(attrs.length && { values: attrs.map(a => ({ pt: a === 'Cor' ? v.cor || FILL.cor : v.tam || FILL.tam })) }),
@@ -149,6 +150,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
             check(await supabase.from('nuvemshop_produtos').upsert([{ nome: key, product_id: productId, erro: null, updated_at: new Date().toISOString() }]));
         }
         const product = await ns(`/products/${productId}`);
+        if (desc && valOf(product.description) !== desc) await ns(`/products/${productId}`, { method: 'PUT', body: { description: { pt: desc } } });
         const names = (product.attributes || []).map(a => norm(valOf(a)));
         let iCor = names.findIndex(a => /^(cor|color|colour)/.test(a)), iTam = names.findIndex(a => /^(tam|size|talla|talle)/.test(a));
         if (iCor < 0 && iTam < 0 && names.length) { iCor = 0; iTam = names.length > 1 ? 1 : -1; } // unknown names: assume color, size

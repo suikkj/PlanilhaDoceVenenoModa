@@ -293,7 +293,7 @@ $('#stockTable tbody').onclick = e => {
 
 // Nova / editar peça
 let editing = null;
-const pecaFields = { fNome: 'nome', fData: 'data_compra', fCompra: 'preco_comprado_unitario', fVenda: 'preco_venda', fForn: 'fornecedor' };
+const pecaFields = { fNome: 'nome', fData: 'data_compra', fCompra: 'preco_comprado_unitario', fVenda: 'preco_venda', fForn: 'fornecedor', fDesc: 'descricao' };
 
 // Grade: one row per color/size combination; saved as the per-unit comma lists the rest of the app uses.
 function gradeFromPiece(p) {
@@ -390,6 +390,7 @@ $('#pecaForm').onsubmit = async e => {
         ...gradeToPiece(grade),
     };
     if (hasCol('fornecedor')) d.fornecedor = $('#fForn').value.trim() || null;
+    d.descricao = $('#fDesc').value.trim() || null;
     const err = !d.nome ? 'Informe o nome da peça.'
         : gradeError(grade)
         || (!d.data_compra ? 'Informe a data da compra.'
