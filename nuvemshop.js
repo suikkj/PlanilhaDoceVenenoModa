@@ -336,14 +336,35 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         res.json({ message: 'Pedido marcado como resolvido.' });
     }));
 
+    async function cronOk(req) {
+        const conf = await supabase.from('cron_config').select('secret').eq('id', 1).maybeSingle();
+        const secret = conf.data?.secret || '', got = String(req.headers.authorization || '').replace(/^Bearer /, '');
+        return !!secret && got.length === secret.length && crypto.timingSafeEqual(Buffer.from(got), Buffer.from(secret));
+    }
+    // Publishes hidden products that already have a photo and a description on Nuvemshop. Called in batches
+    // (offset) from the database with the cron secret; returns the next offset until it is null.
+    app.post('/api/cron/nuvemshop/publicar', route(async (req, res) => {
+        if (!await cronOk(req)) return res.sendStatus(401);
+        if (!cfg) return res.json({ skipped: 'sem configuração' });
+        const offset = Math.max(0, parseInt(req.body?.offset, 10) || 0), BATCH = 8;
+        const all = check(await supabase.from('nuvemshop_produtos').select('nome, product_id').not('product_id', 'is', null).order('nome'));
+        const out = { total: all.length, publicados: [], next: offset + BATCH < all.length ? offset + BATCH : null };
+        for (const m of all.slice(offset, offset + BATCH)) {
+            const pr = await ns(`/products/${m.product_id}`).catch(() => null);
+            const desc = String(valOf(pr?.description) || '').replace(/<[^>]*>/g, '').trim();
+            if (!pr || pr.published || !(pr.images || []).length || !desc) continue;
+            await ns(`/products/${m.product_id}`, { method: 'PUT', body: { published: true } });
+            out.publicados.push(valOf(pr.name));
+        }
+        res.json(out);
+    }));
+
     // --- Scheduled run (Supabase pg_cron calls it every 2 minutes) ---
     // Keeps both sides in step without the buttons: re-registers the order webhooks if they vanished, picks up
     // paid/cancelled orders whose webhook never arrived, and syncs products changed outside the site
     // (a database trigger queues their names in nuvemshop_fila).
     app.post('/api/cron/nuvemshop', route(async (req, res) => {
-        const conf = await supabase.from('cron_config').select('secret').eq('id', 1).maybeSingle();
-        const secret = conf.data?.secret || '', got = String(req.headers.authorization || '').replace(/^Bearer /, '');
-        if (!secret || got.length !== secret.length || !crypto.timingSafeEqual(Buffer.from(got), Buffer.from(secret))) return res.sendStatus(401);
+        if (!await cronOk(req)) return res.sendStatus(401);
         if (!cfg) return res.json({ skipped: 'sem configuração' });
         const out = { webhooks: 'ok', pedidos: 0, cancelados: 0, produtos: 0, erros: [] };
         try {
