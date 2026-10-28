@@ -411,3 +411,4 @@ textarea { resize: vertical; min-height: 5rem; }
 .peca-btn:hover strong { text-decoration: underline; }
 .peca-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
 #iText { white-space: pre-line; }
+.figure span.neg { color: #f0a08f; }

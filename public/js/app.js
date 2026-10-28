@@ -197,7 +197,9 @@ async function load() {
         p.preco_venda = Number(p.preco_venda) || 0;
         p.preco_comprado_unitario = Number(p.preco_comprado_unitario) || 0;
     }
+    gastos = await api('/gastos').catch(() => gastos); // shortcut: offline shows the last list loaded, no local cache
     renderStock();
+    renderGastos();
     renderSales();
     if (isAdmin && !offline) { loadUsers(); loadNuvemshop(); renderPush(); }
 }
@@ -864,6 +866,93 @@ $('#salesTable tbody').onclick = async e => {
     const body = { status: 'estoque', data_venda: null, desconto: null, lucro: null, preco_venda: preco };
     for (const k of ['forma_pagamento', 'cliente_nome', 'cliente_telefone']) if (hasCol(k)) body[k] = null;
     await run(() => api('/pecas/' + id, { method: 'PUT', body }), 'Peça devolvida ao estoque.');
+};
+
+// ---------- Gastos ----------
+// A purchase in N parcelas counts in N months from its date; cents left by the division go to the last one.
+let gastos = [], gMonth = today().slice(0, 7), editingGasto = null;
+const addMonths = (ym, n) => { const [y, m] = ym.split('-').map(Number), t = y * 12 + m - 1 + n; return `${Math.floor(t / 12)}-${String(t % 12 + 1).padStart(2, '0')}`; };
+function parcelasDe(g) {
+    const n = Number(g.parcelas) || 1, total = Math.round(Number(g.valor_total) * 100), each = Math.floor(total / n);
+    return Array.from({ length: n }, (_, i) => ({ mes: addMonths(g.data.slice(0, 7), i), num: i + 1, n, valor: (i === n - 1 ? total - each * (n - 1) : each) / 100 }));
+}
+console.assert(JSON.stringify(parcelasDe({ valor_total: 100, parcelas: 3, data: '2026-11-15' }).map(p => [p.mes, p.valor]))
+    === '[["2026-11",33.33],["2026-12",33.33],["2027-01",33.34]]', 'parcelasDe');
+const CATS = ['Sacolas', 'Papel de seda', 'Etiquetas', 'Embalagens', 'Cartões e tags', 'Frete', 'Marketing', 'Outros'];
+
+function renderGastos() {
+    const all = gastos.flatMap(g => parcelasDe(g).map(p => ({ ...p, g })));
+    const sales = monthTotals();
+    const keys = [...new Set([today().slice(0, 7), ...all.map(p => p.mes), ...Object.keys(sales)])].sort().reverse();
+    if (!keys.includes(gMonth)) gMonth = today().slice(0, 7);
+    $('#gMonthSelect').innerHTML = keys.map(k => `<option value="${k}" ${k === gMonth ? 'selected' : ''}>${monthLabel(k)}</option>`).join('');
+
+    const rows = all.filter(p => p.mes === gMonth).sort((a, b) => b.g.data.localeCompare(a.g.data));
+    const total = rows.reduce((n, p) => n + p.valor, 0), lucro = sales[gMonth]?.lucro || 0, liquido = lucro - total;
+    $('#gTotal').textContent = money(total);
+    $('#gLucroVendas').textContent = money(lucro);
+    $('#gLiquido').textContent = money(liquido);
+    $('#gLiquido').classList.toggle('neg', liquido < 0);
+
+    const next = all.filter(p => p.mes === addMonths(gMonth, 1)).reduce((n, p) => n + p.valor, 0);
+    $('#gProximo').textContent = next ? `Já comprometido em ${monthLabel(addMonths(gMonth, 1))} com parcelas: ${money(next)}.` : '';
+
+    const cats = new Map();
+    for (const p of rows) { const k = p.g.categoria || 'Sem categoria'; cats.set(k, (cats.get(k) || 0) + p.valor); }
+    $('#gCats').innerHTML = cats.size ? `<section class="rank"><h3>Por categoria</h3><ol>${[...cats].sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => `<li><span>${esc(k)}</span><small>${money(v)}${total ? ` (${Math.round(v / total * 100)}%)` : ''}</small></li>`).join('')}</ol></section>` : '';
+
+    $('#gastosTable tbody').innerHTML = rows.map(p => `<tr>
+          <td>${fmtDate(p.g.data)}</td>
+          <td><strong>${esc(p.g.descricao)}</strong>${p.g.categoria ? `<span class="sub">${esc(p.g.categoria)}</span>` : ''}</td>
+          <td data-l="Parcela">${p.n > 1 ? `${p.num} de ${p.n}` : 'À vista'}</td>
+          <td class="num" data-l="No mês">${money(p.valor)}</td>
+          <td class="num" data-l="Total">${money(p.g.valor_total)}</td>
+          <td class="row-actions"><button class="btn-link" data-gedit="${p.g.id}">Editar</button><button class="btn-link" data-gdel="${p.g.id}">Apagar</button></td></tr>`).join('');
+    $('#gastosTable').hidden = !rows.length;
+    $('#gastosEmpty').hidden = rows.length > 0;
+    $('#gCatList').innerHTML = [...new Set([...CATS, ...gastos.map(g => g.categoria).filter(Boolean)])].map(c => `<option value="${esc(c)}">`).join('');
+}
+$('#gMonthSelect').onchange = e => { gMonth = e.target.value; renderGastos(); };
+
+function updateParcInfo() {
+    const v = parseFloat($('#gValor').value), n = parseInt($('#gParc').value) || 1, d = $('#gData').value;
+    if (!(v > 0) || !d) { $('#gParcVal').textContent = money(0); $('#gParcInfo').textContent = ''; return; }
+    const ps = parcelasDe({ valor_total: v, parcelas: n, data: d });
+    $('#gParcVal').textContent = n > 1 ? `${n}× de ${money(ps[0].valor)}` : money(v);
+    $('#gParcInfo').textContent = n > 1 ? `por mês, de ${monthLabel(ps[0].mes)} a ${monthLabel(ps[n - 1].mes)}` : 'à vista';
+}
+['#gValor', '#gParc', '#gData'].forEach(s => $(s).oninput = updateParcInfo);
+function openGasto(g) {
+    if (needsNet()) return;
+    editingGasto = g || null;
+    $('#gastoTitle').textContent = g ? 'Editar gasto' : 'Novo gasto';
+    $('#gDesc').value = g?.descricao || ''; $('#gCat').value = g?.categoria || '';
+    $('#gData').value = g?.data || today(); $('#gValor').value = g?.valor_total ?? ''; $('#gParc').value = g?.parcelas || 1;
+    $('#gastoMsg').textContent = '';
+    updateParcInfo();
+    $('#gastoDialog').showModal();
+    $('#gDesc').focus();
+}
+$('#addGastoBtn').onclick = () => openGasto();
+$('#gastoForm').onsubmit = async e => {
+    if (e.submitter?.value !== 'ok') return;
+    e.preventDefault();
+    const body = { descricao: $('#gDesc').value.trim(), categoria: $('#gCat').value.trim(), data: $('#gData').value,
+        valor_total: parseFloat($('#gValor').value), parcelas: parseInt($('#gParc').value) || 1 };
+    try {
+        await api(editingGasto ? '/gastos/' + editingGasto.id : '/gastos', { method: editingGasto ? 'PUT' : 'POST', body });
+    } catch (err) { $('#gastoMsg').textContent = err.message; return; }
+    $('#gastoDialog').close();
+    gMonth = body.data.slice(0, 7);
+    await run(async () => {}, editingGasto ? 'Gasto atualizado.' : 'Gasto registrado.');
+};
+$('#gastosTable tbody').onclick = async e => {
+    const t = e.target, g = gastos.find(x => x.id === +(t.dataset.gedit || t.dataset.gdel));
+    if (!g) return;
+    if (t.dataset.gedit) return openGasto(g);
+    if (needsNet() || !await confirmAction('Apagar gasto', `Apagar "${g.descricao}" (${money(g.valor_total)}${g.parcelas > 1 ? ` em ${g.parcelas} parcelas` : ''})? Some de todos os meses.`, 'Apagar')) return;
+    await run(() => api('/gastos/' + g.id, { method: 'DELETE' }), 'Gasto apagado.');
 };
 
 // ---------- Usuários ----------

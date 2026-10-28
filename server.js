@@ -226,6 +226,36 @@ app.post('/api/pecas/:id/fotos/remover', auth, route(async (req, res) => {
 }));
 
 // Read-only: months saved by the old version, shown alongside months computed from sales.
+// --- Gastos (sacolas, papel, etiquetas...) ---
+function gastoBody(b = {}) {
+    const g = { descricao: String(b.descricao ?? '').trim(), categoria: String(b.categoria ?? '').trim() || null,
+        valor_total: Number(b.valor_total), parcelas: Number(b.parcelas) || 1, data: b.data };
+    if (!g.descricao) return 'Informe o que foi comprado.';
+    if (!(g.valor_total > 0)) return 'Informe um valor maior que zero.';
+    if (!Number.isInteger(g.parcelas) || g.parcelas < 1 || g.parcelas > 48) return 'As parcelas vão de 1 a 48.';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(g.data))) return 'Informe a data da compra.';
+    return g;
+}
+app.get('/api/gastos', auth, route(async (req, res) => {
+    res.json(check(await supabase.from('gastos').select('*').order('data', { ascending: false })));
+}));
+app.post('/api/gastos', auth, route(async (req, res) => {
+    const g = gastoBody(req.body);
+    if (typeof g === 'string') return res.status(400).json({ message: g });
+    res.status(201).json(check(await supabase.from('gastos').insert([g]).select('*'))[0]);
+}));
+app.put('/api/gastos/:id', auth, route(async (req, res) => {
+    const g = gastoBody(req.body);
+    if (typeof g === 'string') return res.status(400).json({ message: g });
+    const rows = check(await supabase.from('gastos').update(g).eq('id', req.params.id).select('*'));
+    if (!rows.length) return res.status(404).json({ message: 'Gasto não encontrado.' });
+    res.json(rows[0]);
+}));
+app.delete('/api/gastos/:id', auth, route(async (req, res) => {
+    check(await supabase.from('gastos').delete().eq('id', req.params.id));
+    res.json({ message: 'Gasto apagado.' });
+}));
+
 app.get('/api/historico', auth, route(async (req, res) => {
     res.json(check(await supabase.from('historico_mensal').select('*')));
 }));

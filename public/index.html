@@ -51,6 +51,7 @@
     <nav class="tabs" aria-label="Seções">
       <a href="#estoque" data-tab="estoque">Estoque</a>
       <a href="#vendas" data-tab="vendas">Vendas</a>
+      <a href="#gastos" data-tab="gastos">Gastos</a>
       <a href="#usuarios" data-tab="usuarios" id="tabUsuarios" hidden>Usuários <span id="pendingBadge" class="badge" hidden></span></a>
       <a href="#nuvemshop" data-tab="nuvemshop" id="tabNuvem" hidden>Nuvemshop <span id="nsBadge" class="badge" hidden></span></a>
     </nav>
@@ -132,6 +133,32 @@
       </table>
     </div>
     <p class="empty" id="salesEmpty" hidden></p>
+  </section>
+
+  <!-- GASTOS -->
+  <section id="view-gastos" class="view" hidden>
+    <div class="band">
+      <label class="month-pick">
+        <select id="gMonthSelect" aria-label="Mês"></select>
+      </label>
+      <div class="figure"><span id="gTotal">R$ 0,00</span><small>gastos no mês</small></div>
+      <div class="figure"><span id="gLucroVendas">R$ 0,00</span><small>lucro das vendas</small></div>
+      <div class="figure"><span id="gLiquido">R$ 0,00</span><small>lucro líquido</small></div>
+      <button class="btn btn-copper" id="addGastoBtn">Novo gasto</button>
+    </div>
+    <p class="hint" id="gProximo"></p>
+
+    <div class="ranks" id="gCats"></div>
+
+    <div class="table-wrap">
+      <table class="grid" id="gastosTable">
+        <thead><tr>
+          <th>Data</th><th>Gasto</th><th>Parcela</th><th class="num">No mês</th><th class="num">Total</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="empty" id="gastosEmpty" hidden>Nenhum gasto neste mês. Use "Novo gasto" para registrar sacolas, papel, etiquetas e outros custos da loja.</p>
   </section>
 
   <!-- USUÁRIOS -->
@@ -244,6 +271,27 @@
     <div class="actions">
       <button value="cancel" formnovalidate class="btn btn-ghost">Cancelar</button>
       <button value="ok" class="btn btn-primary">Registrar venda</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Novo / editar gasto -->
+<dialog id="gastoDialog">
+  <form method="dialog" id="gastoForm">
+    <h2 id="gastoTitle">Novo gasto</h2>
+    <div class="fields">
+      <label class="wide">O que foi comprado <input id="gDesc" required autocomplete="off" placeholder="Ex.: 500 sacolas kraft"></label>
+      <label>Categoria <input id="gCat" list="gCatList" autocomplete="off" placeholder="Sacolas, Etiquetas…"></label>
+      <label>Data da compra <input id="gData" type="date" required></label>
+      <label>Valor total (R$) <input id="gValor" type="number" min="0.01" step="0.01" inputmode="decimal" required></label>
+      <label>Parcelas <input id="gParc" type="number" min="1" max="48" step="1" value="1" inputmode="numeric" required></label>
+    </div>
+    <datalist id="gCatList"></datalist>
+    <p class="sell-total"><span id="gParcVal">R$ 0,00</span> <small id="gParcInfo"></small></p>
+    <p class="form-msg" id="gastoMsg" role="alert"></p>
+    <div class="actions">
+      <button value="cancel" formnovalidate class="btn btn-ghost">Cancelar</button>
+      <button value="ok" class="btn btn-primary">Salvar</button>
     </div>
   </form>
 </dialog>
