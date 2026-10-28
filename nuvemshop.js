@@ -187,7 +187,10 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
     async function afterChange(names) {
         if (!cfg) return;
         for (const nome of [...new Set(names.filter(Boolean).map(String))]) {
-            try { await syncName(nome); }
+            try {
+                await syncName(nome);
+                await supabase.from('nuvemshop_fila').delete().eq('nome', nome); // done: the scheduled run can skip it
+            }
             catch (err) {
                 if (err.code === 'PGRST205' || err.code === '42P01') return; // integration tables not created yet
                 // update keeps the product link; insert only when the name has no row yet
@@ -331,6 +334,39 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
     app.post('/api/nuvemshop/pedidos/:id/resolver', auth, adminOnly, route(async (req, res) => {
         check(await supabase.from('nuvemshop_pedidos').update({ status: 'resolvido', itens_pendentes: [], erro: null }).eq('pedido_id', req.params.id));
         res.json({ message: 'Pedido marcado como resolvido.' });
+    }));
+
+    // --- Scheduled run (Supabase pg_cron calls it every 2 minutes) ---
+    // Keeps both sides in step without the buttons: re-registers the order webhooks if they vanished, picks up
+    // paid/cancelled orders whose webhook never arrived, and syncs products changed outside the site
+    // (a database trigger queues their names in nuvemshop_fila).
+    app.post('/api/cron/nuvemshop', route(async (req, res) => {
+        const conf = await supabase.from('cron_config').select('secret').eq('id', 1).maybeSingle();
+        const secret = conf.data?.secret || '', got = String(req.headers.authorization || '').replace(/^Bearer /, '');
+        if (!secret || got.length !== secret.length || !crypto.timingSafeEqual(Buffer.from(got), Buffer.from(secret))) return res.sendStatus(401);
+        if (!cfg) return res.json({ skipped: 'sem configuração' });
+        const out = { webhooks: 'ok', pedidos: 0, cancelados: 0, produtos: 0, erros: [] };
+        try {
+            const hooks = await ns('/webhooks');
+            for (const event of EVENTS) if (!hooks.some(w => w.event === event && w.url === hookUrl)) {
+                await ns('/webhooks', { method: 'POST', body: { event, url: hookUrl } }); out.webhooks = 'recriados';
+            }
+        } catch (err) { out.erros.push(`webhooks: ${err.message}`); }
+        const since = new Date(Date.now() - 3 * 864e5).toISOString(); // webhooks normally arrive in seconds; 3 days covers outages
+        try {
+            const known = new Set(check(await supabase.from('nuvemshop_pedidos').select('pedido_id').gte('created_at', new Date(Date.now() - 10 * 864e5).toISOString())).map(r => r.pedido_id));
+            const paid = await ns(`/orders?payment_status=paid&updated_at_min=${encodeURIComponent(since)}&per_page=50&fields=id`).catch(e => e.status === 404 ? [] : Promise.reject(e)); // 404 = no orders
+            for (const o of paid) if (!known.has(String(o.id))) { await processPaid(o.id); out.pedidos++; }
+            const cancelled = await ns(`/orders?status=cancelled&updated_at_min=${encodeURIComponent(since)}&per_page=50&fields=id`).catch(e => e.status === 404 ? [] : Promise.reject(e));
+            for (const o of cancelled) if (known.has(String(o.id)) && await processCancelled(o.id) === 'cancelado') out.cancelados++;
+        } catch (err) { out.erros.push(`pedidos: ${err.message}`); }
+        const fila = check(await supabase.from('nuvemshop_fila').select('nome').order('created_at').limit(6)); // small batch: fits the function time limit
+        if (fila.length) {
+            await afterChange(fila.map(f => f.nome));
+            await supabase.from('nuvemshop_fila').delete().in('nome', fila.map(f => f.nome)); // failures stay visible as product errors
+            out.produtos = fila.length;
+        }
+        res.json(out);
     }));
 
     return { afterChange };
