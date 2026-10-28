@@ -66,4 +66,5 @@ async function main() {
     console.log(aplicar ? `\n${feitos} grupos juntados.` : '\nNada foi gravado. Rode com --aplicar para juntar.');
 }
 
-main().catch(e => { console.error('Erro:', e.message); process.exit(1); });
+if (require.main === module) main().catch(e => { console.error('Erro:', e.message); process.exit(1); });
+module.exports = { merge };
