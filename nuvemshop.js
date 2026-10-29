@@ -2,7 +2,7 @@
 // Pieces are matched by name + color + size. Anything that doesn't match is kept as a pending item for the admin.
 // Uses a store "aplicativo sob medida": NUVEMSHOP_TOKEN and NUVEMSHOP_STORE_ID come from the Vercel variables.
 const crypto = require('crypto');
-const { stockUnits, available, afterSale, splitList } = require('./public/js/variants.js');
+const { stockUnits, available, afterSale, splitList, canonCor } = require('./public/js/variants.js');
 
 const API = 'https://api.nuvemshop.com.br/2025-03';
 const UA = 'Doce Veneno Estoque (lucasoliprogramador@gmail.com)';
@@ -14,18 +14,18 @@ const baseName = item => (item.variant_values || []).length ? String(item.name).
 
 // The color/size combinations of a piece that fit an order item's variant values.
 function matchingCombos(p, stock, values) {
-    const vals = new Set(values.map(norm));
+    const vals = new Set(values.map(v => norm(canonCor(v)))); // an old "Preta" variant matches "Preto" here
     const combos = stock.paired
         ? [...new Map(stock.units.map(u => [u.cor + '|' + u.tam, u])).values()]
         : (stock.c.length ? [...new Set(stock.c)] : ['']).flatMap(cor => (stock.t.length ? [...new Set(stock.t)] : ['']).map(tam => ({ cor, tam })));
     const inStock = combos.filter(c => available(stock, c.cor, c.tam, p.quantidade) > 0);
     if (!vals.size) return inStock.length === 1 ? inStock : []; // no variant info: only safe when there is one option
     // Exact: the piece's color and size are both among the order's values.
-    const exact = inStock.filter(c => (!c.cor || vals.has(norm(c.cor))) && (!c.tam || vals.has(norm(c.tam))));
+    const exact = inStock.filter(c => (!c.cor || vals.has(norm(canonCor(c.cor)))) && (!c.tam || vals.has(norm(c.tam))));
     if (exact.length) return exact;
     // Partial: every order value is the piece's color or size (e.g. order says only "Preta", piece is "Preta, U").
     // Accepted only when it points to a single option; otherwise it's ambiguous and becomes a pending item.
-    const partial = inStock.filter(c => [...vals].every(v => v === norm(c.cor) || v === norm(c.tam)));
+    const partial = inStock.filter(c => [...vals].every(v => v === norm(canonCor(c.cor)) || v === norm(c.tam)));
     return partial.length === 1 ? partial : [];
 }
 
@@ -111,7 +111,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         const at = (l, i) => l.length === 1 ? l[0] : (l[i] || '');
         return Array.from({ length: n }, (_, i) => ({ cor: at(c, i), tam: at(t, i) }));
     }
-    const comboKey = (cor, tam) => `${norm(cor)}|${norm(tam)}`;
+    const comboKey = (cor, tam) => `${norm(canonCor(cor))}|${norm(tam)}`; // "Azul BB" and "Azul Bebê" are the same variant
     const money2 = v => (Number(v) || 0).toFixed(2);
 
     // Adds photos the product doesn't have yet and removes the ones deleted here. Only touches photos the site sent,
@@ -185,12 +185,28 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
             const vals = (v.values || []).map(valOf);
             return comboKey(iCor >= 0 ? unfill(vals[iCor], FILL.cor) : '', iTam >= 0 ? unfill(vals[iTam], FILL.tam) : '');
         };
-        const updates = [], problems = [], seen = new Set();
-        for (const v of product.variants || []) {
-            const k = keyOfVariant(v), w = want.get(k);
+        const updates = [], problems = [], seen = new Set(), variants = product.variants || [];
+        // Variants that are the same color written differently ("Azul BB" / "Azul Bebê"): keep the one with stock
+        // (or the first), delete the others, and rename the kept one to the spelling used here.
+        const byKey = new Map();
+        for (const v of variants) { const k = keyOfVariant(v); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(v); }
+        let left = variants.length;
+        for (const [k, list] of byKey) {
+            const keep = list.find(v => Number(v.stock) > 0) || list[0];
+            for (const v of list) if (v !== keep && left > 1) {
+                await ns(`/products/${productId}/variants/${v.id}`, { method: 'DELETE' }).catch(err => { if (err.status !== 404) throw err; });
+                left--;
+            }
+            const w = want.get(k);
             seen.add(k);
+            const vals = (keep.values || []).map(valOf);
+            const cor = iCor >= 0 && vals[iCor] && norm(vals[iCor]) !== norm(FILL.cor) ? canonCor(vals[iCor]) : null;
+            if (cor && cor !== vals[iCor]) {
+                const values = vals.map((x, i) => ({ pt: i === iCor ? cor : x }));
+                await ns(`/products/${productId}/variants/${keep.id}`, { method: 'PUT', body: { values } }).catch(() => {}); // cosmetic: a failed rename keeps the old label
+            }
             // Sold-out combinations keep their variant (and photos) with stock 0.
-            updates.push({ id: v.id, stock: w ? w.stock : 0, ...(w && { price: money2(w.price) }) });
+            updates.push({ id: keep.id, stock: w ? w.stock : 0, ...(w && { price: money2(w.price) }) });
         }
         for (const [k, w] of want) {
             if (seen.has(k)) continue;

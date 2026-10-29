@@ -26,4 +26,15 @@ function afterSale(s, cor, tam, q) {
     return { cor: joinList(drop(s.c, cor)), tamanho: joinList(drop(s.t, tam)) };
 }
 
-if (typeof module !== 'undefined') module.exports = { splitList, stockUnits, available, afterSale, joinList };
+// One spelling per color ("Preta" -> "Preto", "Azul BB" -> "Azul Bebê"). Same rules as dv_cor in the database
+// (supabase/migrations/20261029010000_normalizar_textos.sql); keep both in sync.
+const COR_PALAVRA = { preta: 'Preto', branca: 'Branco', vermelha: 'Vermelho', amarela: 'Amarelo', estampada: 'Estampado',
+    estampa: 'Estampado', listrada: 'Listrado', bb: 'Bebê', bebe: 'Bebê', off: 'Off-White', lilas: 'Lilás', fucsia: 'Fúcsia',
+    petroleo: 'Petróleo', degrade: 'Degradê', salmao: 'Salmão', cafe: 'Café', vesrde: 'Verde', miusgo: 'Musgo',
+    multicores: 'Multicor', colorido: 'Multicor', variada: 'Multicor' };
+const cap = w => w.replace(/(^|[^a-zà-ÿ])([a-zà-ÿ])/g, (m, a, b) => a + b.toUpperCase());
+const canonCor = s => String(s ?? '').trim().toLowerCase().replace(/terra\s+cota/g, 'terracota').replace(/listra\s+branca/g, 'listrado branco')
+    .split('/').map(p => p.trim()).filter(Boolean)
+    .map(p => p.split(/\s+/).map(w => COR_PALAVRA[w.normalize('NFD').replace(/[\u0300-\u036f]/g, '')] || cap(w)).join(' ')).join('/');
+
+if (typeof module !== 'undefined') module.exports = { splitList, stockUnits, available, afterSale, joinList, canonCor };
