@@ -139,6 +139,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         const rows = named.filter(p => p.status !== 'vendida' && Number(p.quantidade) > 0);
         // Photos of every row with this name, sold ones included, so a product keeps its photos while restocking.
         const desc = descOf(named);
+        const pronto = fotos => fotos.length > 0 && named.some(p => String(p.descricao || '').trim()); // photo + description in the sheet
         const fotos = [...new Map(named.flatMap(p => p.fotos || []).map(f => [f.path, f])).values()];
         const want = new Map();
         for (const p of rows) for (const u of unitsOf(p)) {
@@ -169,6 +170,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
                 } });
                 check(await supabase.from('nuvemshop_produtos').update({ product_id: String(created.id), erro: null, updated_at: new Date().toISOString() }).eq('nome', key));
                 await syncImages(key, String(created.id), fotos);
+                if (pronto(fotos)) await ns(`/products/${created.id}`, { method: 'PUT', body: { published: true } }); // photo + description: goes live
                 return 'criado';
             }
             check(await supabase.from('nuvemshop_produtos').upsert([{ nome: key, product_id: productId, erro: null, updated_at: new Date().toISOString() }]));
@@ -202,6 +204,8 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         }
         if (updates.length) await ns(`/products/${productId}/variants`, { method: 'PATCH', body: updates });
         await syncImages(key, productId, fotos);
+        // Hidden product that now has a photo and a description here: goes live. Never hides one that is visible.
+        if (!product.published && pronto(fotos)) await ns(`/products/${productId}`, { method: 'PUT', body: { published: true } });
         const erro = problems.length ? `Ajuste à mão na Nuvemshop: ${problems.join('; ')}.` : null;
         check(await supabase.from('nuvemshop_produtos').update({ erro, updated_at: new Date().toISOString() }).eq('nome', key));
         return erro ? 'parcial' : 'atualizado';
