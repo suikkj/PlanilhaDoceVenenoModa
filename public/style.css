@@ -423,3 +423,4 @@ textarea { resize: vertical; min-height: 5rem; }
 .promo-bar .promo-search { flex: 1 1 220px; }
 .promo-tag { display: inline-block; padding: .1rem .5rem; border-radius: 999px; background: var(--copper); color: var(--moss-deep); font-size: .8rem; font-weight: 700; }
 .promo-old { text-decoration: line-through; color: var(--muted); margin-right: .3rem; }
+.promo-off { background: var(--line); color: var(--muted); }

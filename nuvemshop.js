@@ -134,6 +134,9 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
     }
 
     // Promotional price from the sheet's percent off (promo_pct); null clears the promotion on Nuvemshop.
+    // A promotion counts only inside its dates (Sao Paulo calendar day, both ends inclusive; empty = open).
+    const hojeSP = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+    const promoAtiva = p => { const d = hojeSP(); return Number(p.promo_pct) > 0 && (!p.promo_inicio || p.promo_inicio <= d) && (!p.promo_fim || p.promo_fim >= d); };
     const promoOf = w => w.promo > 0 && w.promo < 100 ? money2(w.price * (1 - w.promo / 100)) : null;
 
     async function syncName(nome) {
@@ -149,7 +152,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
             const k = comboKey(u.cor, u.tam);
             const w = want.get(k) || { cor: u.cor, tam: u.tam, stock: 0, price: 0, cost: 0, promo: 0 };
             w.stock++; w.price = Math.max(w.price, Number(p.preco_venda) || 0); w.cost = Math.max(w.cost, Number(p.preco_comprado_unitario) || 0);
-            w.promo = Math.max(w.promo, Number(p.promo_pct) || 0);
+            if (promoAtiva(p)) w.promo = Math.max(w.promo, Number(p.promo_pct) || 0);
             want.set(k, w);
         }
         let map = check(await supabase.from('nuvemshop_produtos').select('*').eq('nome', key).maybeSingle());

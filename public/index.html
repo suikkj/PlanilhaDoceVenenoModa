@@ -178,9 +178,11 @@
     </div>
 
     <h2 class="view-title">Promoção na loja</h2>
-    <p class="hint">Escolha o desconto e as peças. Na Nuvemshop elas aparecem com o preço antigo riscado e o novo preço ao lado.</p>
+    <p class="hint">Escolha o desconto, o período (opcional) e as peças. Sem datas, vale a partir de agora até você tirar. Na Nuvemshop elas aparecem com o preço antigo riscado e o novo preço ao lado.</p>
     <div class="promo-bar">
       <div class="field"><label for="pPct">Desconto (%)</label><input id="pPct" inputmode="decimal" placeholder="50" autocomplete="off"></div>
+      <div class="field"><label for="pInicio">Começa em</label><input id="pInicio" type="date"></div>
+      <div class="field"><label for="pFim">Termina em</label><input id="pFim" type="date"></div>
       <div class="field promo-search"><label for="pBusca">Buscar peça</label><input id="pBusca" type="search" placeholder="Nome da peça" autocomplete="off"></div>
       <button class="btn btn-copper" id="pAplicar" type="button">Aplicar desconto</button>
       <button class="btn" id="pTirar" type="button">Tirar desconto</button>
@@ -189,7 +191,7 @@
     <div class="table-wrap">
       <table class="grid" id="promoTable">
         <thead><tr>
-          <th><input type="checkbox" id="pTodas" aria-label="Selecionar todas as peças da lista"></th><th>Peça</th><th class="num">Em estoque</th><th class="num">Preço</th><th class="num">Promoção</th>
+          <th><input type="checkbox" id="pTodas" aria-label="Selecionar todas as peças da lista"></th><th>Peça</th><th class="num">Em estoque</th><th class="num">Preço</th><th class="num">Promoção</th><th>Período</th>
         </tr></thead>
         <tbody></tbody>
       </table>
