@@ -52,6 +52,7 @@
       <a href="#estoque" data-tab="estoque">Estoque</a>
       <a href="#vendas" data-tab="vendas">Vendas</a>
       <a href="#gastos" data-tab="gastos">Gastos</a>
+      <a href="#desconto" data-tab="desconto">Desconto</a>
       <a href="#usuarios" data-tab="usuarios" id="tabUsuarios" hidden>Usuários <span id="pendingBadge" class="badge" hidden></span></a>
       <a href="#nuvemshop" data-tab="nuvemshop" id="tabNuvem" hidden>Nuvemshop <span id="nsBadge" class="badge" hidden></span></a>
     </nav>
@@ -159,6 +160,22 @@
       </table>
     </div>
     <p class="empty" id="gastosEmpty" hidden>Nenhum gasto neste mês. Use "Novo gasto" para registrar sacolas, papel, etiquetas e outros custos da loja.</p>
+  </section>
+
+  <!-- DESCONTO -->
+  <section id="view-desconto" class="view" hidden>
+    <h2 class="view-title">Calculadora de desconto</h2>
+    <p class="hint">Coloque o preço de hoje e o preço que você quer cobrar. O desconto aparece na hora.</p>
+    <div class="calc">
+      <div class="fields">
+        <div class="field"><label for="dAtual">Preço atual (R$)</label><input id="dAtual" inputmode="decimal" placeholder="149,99" autocomplete="off"></div>
+        <div class="field"><label for="dNovo">Preço desejado (R$)</label><input id="dNovo" inputmode="decimal" placeholder="119,99" autocomplete="off"></div>
+      </div>
+      <div class="calc-result" aria-live="polite">
+        <span id="dPct">—</span>
+        <small id="dInfo">Preencha os dois preços.</small>
+      </div>
+    </div>
   </section>
 
   <!-- USUÁRIOS -->

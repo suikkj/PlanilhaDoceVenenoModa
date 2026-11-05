@@ -148,6 +148,21 @@ function showTab() {
 }
 window.addEventListener('hashchange', showTab);
 
+// ---------- Desconto ----------
+// "1.234,56", "149,99" or "149.99" -> number; anything else -> NaN.
+const parseBRL = v => { v = String(v).trim().replace(/[R$\s]/g, ''); if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.'); return v ? Number(v) : NaN; };
+const fmtBRL = n => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+function calcDesconto() {
+    const a = parseBRL($('#dAtual').value), n = parseBRL($('#dNovo').value);
+    const pct = $('#dPct'), info = $('#dInfo');
+    if (!(a > 0) || !(n >= 0)) { pct.textContent = '—'; info.textContent = 'Preencha os dois preços.'; return; }
+    const d = (a - n) / a * 100, p = Math.abs(d).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+    if (d > 0) { pct.textContent = p + '% de desconto'; info.textContent = `${fmtBRL(a - n)} a menos: de ${fmtBRL(a)} por ${fmtBRL(n)}.`; }
+    else if (d < 0) { pct.textContent = p + '% de aumento'; info.textContent = `O preço desejado é ${fmtBRL(n - a)} maior que o atual.`; }
+    else { pct.textContent = '0%'; info.textContent = 'Os dois preços são iguais.'; }
+}
+$('#dAtual').oninput = $('#dNovo').oninput = calcDesconto;
+
 // ---------- Data ----------
 const inStock = () => pecas.filter(p => p.status !== 'vendida');
 const sold = () => pecas.filter(p => p.status === 'vendida');
