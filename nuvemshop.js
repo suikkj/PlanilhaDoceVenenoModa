@@ -245,6 +245,9 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         }
     }
 
+    // Store-only extras (gift bag) are not stock pieces: no sale row, no pending item, no product sync.
+    const isExtra = item => item.sku === 'SACOLA-PRESENTE' || /^sacola de presente/i.test(String(item.name || ''));
+
     async function processPaid(orderId) {
         // Claim the order first: Nuvemshop may deliver the same webhook twice, and a sale must never be written twice.
         const claim = await supabase.from('nuvemshop_pedidos').insert([{ pedido_id: String(orderId), status: 'processando' }]);
@@ -259,7 +262,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
                 .map(p => ({ ...p, quantidade: Number(p.quantidade), preco_venda: Number(p.preco_venda) }))
                 .sort((a, b) => String(a.data_compra || '9999').localeCompare(String(b.data_compra || '9999'))); // oldest stock leaves first
             const pendentes = [];
-            for (const item of order.products || []) {
+            for (const item of (order.products || []).filter(i => !isExtra(i))) {
                 let remaining = Number(item.quantity) || 0;
                 for (const p of stockRows.filter(p => p.quantidade > 0 && norm(p.nome) === norm(baseName(item)))) {
                     if (!remaining) break;
@@ -276,7 +279,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
                 status: 'processado', numero: String(order.number ?? ''), data_venda: spDate(order.paid_at),
                 cliente: order.customer?.name || order.contact_name || null, itens_pendentes: pendentes,
             }).eq('pedido_id', String(orderId)));
-            await afterChange(order.products.map(baseName)); // Nuvemshop stock = stock here, also after concurrent shop sales
+            await afterChange(order.products.filter(i => !isExtra(i)).map(baseName)); // Nuvemshop stock = stock here, also after concurrent shop sales
             if (pendentes.length) await notifyAdmins('Pedido da Nuvemshop com pendência',
                 `Pedido #${order.number}: ${pendentes.length} ${pendentes.length === 1 ? 'item não encontrado' : 'itens não encontrados'} no estoque. Registre a venda à mão.`, '/#nuvemshop');
             return pendentes.length ? 'pendente' : 'ok';
