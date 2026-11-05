@@ -133,6 +133,12 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         }
     }
 
+    // Promotional price from the sheet's percent off (promo_pct); null clears the promotion on Nuvemshop.
+    // A promotion counts only inside its dates (Sao Paulo calendar day, both ends inclusive; empty = open).
+    const hojeSP = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+    const promoAtiva = p => { const d = hojeSP(); return Number(p.promo_pct) > 0 && (!p.promo_inicio || p.promo_inicio <= d) && (!p.promo_fim || p.promo_fim >= d); };
+    const promoOf = w => w.promo > 0 && w.promo < 100 ? money2(w.price * (1 - w.promo / 100)) : null;
+
     async function syncName(nome) {
         const key = norm(nome);
         const named = check(await supabase.from('pecas').select('*')).filter(p => norm(p.nome) === key);
@@ -144,8 +150,9 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         const want = new Map();
         for (const p of rows) for (const u of unitsOf(p)) {
             const k = comboKey(u.cor, u.tam);
-            const w = want.get(k) || { cor: u.cor, tam: u.tam, stock: 0, price: 0, cost: 0 };
+            const w = want.get(k) || { cor: u.cor, tam: u.tam, stock: 0, price: 0, cost: 0, promo: 0 };
             w.stock++; w.price = Math.max(w.price, Number(p.preco_venda) || 0); w.cost = Math.max(w.cost, Number(p.preco_comprado_unitario) || 0);
+            if (promoAtiva(p)) w.promo = Math.max(w.promo, Number(p.promo_pct) || 0);
             want.set(k, w);
         }
         let map = check(await supabase.from('nuvemshop_produtos').select('*').eq('nome', key).maybeSingle());
@@ -164,7 +171,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
                 const created = await ns('/products', { method: 'POST', body: {
                     name: { pt: rows[0].nome }, ...(desc && { description: { pt: desc } }), ...(await categoryFor(rows[0].nome)), published: false, attributes: attrs.map(a => ({ pt: a })),
                     variants: [...want.values()].map(v => ({
-                        price: money2(v.price), stock: v.stock, ...(v.cost > 0 && { cost: money2(v.cost) }),
+                        price: money2(v.price), stock: v.stock, ...(v.cost > 0 && { cost: money2(v.cost) }), ...(promoOf(v) && { promotional_price: promoOf(v) }),
                         ...(attrs.length && { values: attrs.map(a => ({ pt: a === 'Cor' ? v.cor || FILL.cor : v.tam || FILL.tam })) }),
                     })),
                 } });
@@ -206,7 +213,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
                 await ns(`/products/${productId}/variants/${keep.id}`, { method: 'PUT', body: { values } }).catch(() => {}); // cosmetic: a failed rename keeps the old label
             }
             // Sold-out combinations keep their variant (and photos) with stock 0.
-            updates.push({ id: keep.id, stock: w ? w.stock : 0, ...(w && { price: money2(w.price) }) });
+            updates.push({ id: keep.id, stock: w ? w.stock : 0, ...(w && { price: money2(w.price), promotional_price: promoOf(w) }) });
         }
         for (const [k, w] of want) {
             if (seen.has(k)) continue;
@@ -215,7 +222,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
                 continue;
             }
             const values = names.map((_, i) => ({ pt: i === iCor ? w.cor || FILL.cor : i === iTam ? w.tam || FILL.tam : '-' }));
-            const nv = await ns(`/products/${productId}/variants`, { method: 'POST', body: { values, price: money2(w.price), ...(w.cost > 0 && { cost: money2(w.cost) }) } });
+            const nv = await ns(`/products/${productId}/variants`, { method: 'POST', body: { values, price: money2(w.price), ...(w.cost > 0 && { cost: money2(w.cost) }), ...(promoOf(w) && { promotional_price: promoOf(w) }) } });
             updates.push({ id: nv.id, stock: w.stock });
         }
         if (updates.length) await ns(`/products/${productId}/variants`, { method: 'PATCH', body: updates });
