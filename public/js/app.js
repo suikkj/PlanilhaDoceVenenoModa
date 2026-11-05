@@ -163,6 +163,54 @@ function calcDesconto() {
 }
 $('#dAtual').oninput = $('#dNovo').oninput = calcDesconto;
 
+// ---------- Promoção ----------
+// One line per piece name (the Nuvemshop product); applying writes promo_pct on every in-stock row of that name.
+const promoSel = new Set();
+const normTxt = v => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+function promoGroups() {
+    const q = normTxt($('#pBusca').value || '');
+    const g = new Map();
+    for (const p of inStock()) {
+        const k = p.nome;
+        const e = g.get(k) || { nome: k, ids: [], qtd: 0, price: 0, pct: 0 };
+        e.ids.push(p.id); e.qtd += p.quantidade; e.price = Math.max(e.price, p.preco_venda); e.pct = Math.max(e.pct, Number(p.promo_pct) || 0);
+        g.set(k, e);
+    }
+    return [...g.values()].filter(e => !q || normTxt(e.nome).includes(q)).sort((a, b) => b.pct - a.pct || a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+function renderPromo() {
+    const rows = promoGroups();
+    $('#promoTable tbody').innerHTML = rows.map(e => `<tr>
+        <td><input type="checkbox" data-promo="${esc(e.nome)}" ${promoSel.has(e.nome) ? 'checked' : ''} aria-label="Selecionar ${esc(e.nome)}"></td>
+        <td>${esc(e.nome)}</td><td class="num">${e.qtd}</td>
+        <td class="num">${e.pct ? `<span class="promo-old">${fmtBRL(e.price)}</span>` : ''}${fmtBRL(e.pct ? e.price * (1 - e.pct / 100) : e.price)}</td>
+        <td class="num">${e.pct ? `<span class="promo-tag">${e.pct.toLocaleString('pt-BR')}% off</span>` : '—'}</td></tr>`).join('');
+    $('#pTodas').checked = rows.length > 0 && rows.every(e => promoSel.has(e.nome));
+    $('#pResumo').textContent = promoSel.size ? `${promoSel.size} peça(s) selecionada(s).` : 'Nenhuma peça selecionada.';
+}
+$('#pBusca').oninput = renderPromo;
+$('#promoTable').onchange = e => {
+    const n = e.target.dataset.promo; if (n == null) return;
+    e.target.checked ? promoSel.add(n) : promoSel.delete(n); renderPromo();
+};
+$('#pTodas').onchange = e => { for (const r of promoGroups()) e.target.checked ? promoSel.add(r.nome) : promoSel.delete(r.nome); renderPromo(); };
+async function savePromo(pct) {
+    if (needsNet()) return;
+    if (!promoSel.size) return toast('Selecione pelo menos uma peça.', true);
+    const ids = promoGroups().filter(e => promoSel.has(e.nome)).flatMap(e => e.ids);
+    if (!ids.length) return toast('As peças selecionadas não estão na lista atual.', true);
+    const n = promoSel.size;
+    await run(() => api('/pecas/batch', { method: 'PATCH', body: { ids, updates: { promo_pct: pct } } }),
+        pct ? `${pct.toLocaleString('pt-BR')}% de desconto em ${n} peça(s). A Nuvemshop atualiza em instantes.` : `Desconto tirado de ${n} peça(s).`);
+    promoSel.clear(); renderPromo();
+}
+$('#pAplicar').onclick = () => {
+    const pct = parseBRL($('#pPct').value);
+    if (!(pct > 0 && pct < 100)) return toast('Digite um desconto entre 1 e 99%.', true);
+    savePromo(Math.round(pct * 100) / 100);
+};
+$('#pTirar').onclick = () => savePromo(null);
+
 // ---------- Data ----------
 const inStock = () => pecas.filter(p => p.status !== 'vendida');
 const sold = () => pecas.filter(p => p.status === 'vendida');
@@ -216,6 +264,7 @@ async function load() {
     renderStock();
     renderGastos();
     renderSales();
+    renderPromo();
     if (isAdmin && !offline) { loadUsers(); loadNuvemshop(); renderPush(); }
 }
 

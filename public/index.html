@@ -176,6 +176,24 @@
         <small id="dInfo">Preencha os dois preços.</small>
       </div>
     </div>
+
+    <h2 class="view-title">Promoção na loja</h2>
+    <p class="hint">Escolha o desconto e as peças. Na Nuvemshop elas aparecem com o preço antigo riscado e o novo preço ao lado.</p>
+    <div class="promo-bar">
+      <div class="field"><label for="pPct">Desconto (%)</label><input id="pPct" inputmode="decimal" placeholder="50" autocomplete="off"></div>
+      <div class="field promo-search"><label for="pBusca">Buscar peça</label><input id="pBusca" type="search" placeholder="Nome da peça" autocomplete="off"></div>
+      <button class="btn btn-copper" id="pAplicar" type="button">Aplicar desconto</button>
+      <button class="btn" id="pTirar" type="button">Tirar desconto</button>
+    </div>
+    <p class="hint" id="pResumo">Nenhuma peça selecionada.</p>
+    <div class="table-wrap">
+      <table class="grid" id="promoTable">
+        <thead><tr>
+          <th><input type="checkbox" id="pTodas" aria-label="Selecionar todas as peças da lista"></th><th>Peça</th><th class="num">Em estoque</th><th class="num">Preço</th><th class="num">Promoção</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </section>
 
   <!-- USUÁRIOS -->

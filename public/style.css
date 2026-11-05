@@ -418,3 +418,8 @@ textarea { resize: vertical; min-height: 5rem; }
 .calc-result { border: 1px solid var(--line); border-radius: 12px; padding: 1.2rem 1.4rem; display: grid; gap: .3rem; }
 .calc-result span { font-size: 2.6rem; font-weight: 700; line-height: 1.1; color: var(--ink); }
 .calc-result small { color: var(--muted); font-size: .95rem; }
+.promo-bar { display: flex; flex-wrap: wrap; gap: .8rem; align-items: end; margin-top: 1rem; }
+.promo-bar .field { min-width: 120px; }
+.promo-bar .promo-search { flex: 1 1 220px; }
+.promo-tag { display: inline-block; padding: .1rem .5rem; border-radius: 999px; background: var(--copper); color: var(--moss-deep); font-size: .8rem; font-weight: 700; }
+.promo-old { text-decoration: line-through; color: var(--muted); margin-right: .3rem; }
