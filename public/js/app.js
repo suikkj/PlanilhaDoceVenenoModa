@@ -164,63 +164,82 @@ function calcDesconto() {
 $('#dAtual').oninput = $('#dNovo').oninput = calcDesconto;
 
 // ---------- Promoção ----------
-// One line per piece name (the Nuvemshop product); applying writes promo_pct on every in-stock row of that name.
-const promoSel = new Set();
-const normTxt = v => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-function promoGroups() {
-    const q = normTxt($('#pBusca').value || '');
-    const g = new Map();
-    for (const p of inStock()) {
-        const k = p.nome;
-        const e = g.get(k) || { nome: k, ids: [], qtd: 0, price: 0, pct: 0, ini: null, fim: null };
-        e.ids.push(p.id); e.qtd += p.quantidade; e.price = Math.max(e.price, p.preco_venda); if ((Number(p.promo_pct) || 0) >= e.pct) { e.pct = Number(p.promo_pct) || 0; e.ini = p.promo_inicio || null; e.fim = p.promo_fim || null; }
-        g.set(k, e);
-    }
-    return [...g.values()].filter(e => !q || normTxt(e.nome).includes(q)).sort((a, b) => b.pct - a.pct || a.nome.localeCompare(b.nome, 'pt-BR'));
-}
+// One line per piece name (the Nuvemshop product); saving writes the promotion on every in-stock row of that name.
+const normTxt = v => String(v).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 const hojeSP = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
 const fmtDia = d => d.split('-').reverse().join('/');
 const promoStatus = e => !e.pct ? '' : e.ini && e.ini > hojeSP() ? 'agendada' : e.fim && e.fim < hojeSP() ? 'encerrada' : 'ativa';
 const promoPeriodo = e => e.ini && e.fim ? `${fmtDia(e.ini)} a ${fmtDia(e.fim)}` : e.ini ? `a partir de ${fmtDia(e.ini)}` : e.fim ? `até ${fmtDia(e.fim)}` : 'sem prazo';
+const promoPrice = e => Math.round(e.price * (1 - e.pct / 100) * 100) / 100;
+function promoGroups() {
+    const q = normTxt($('#pBusca').value || '');
+    const g = new Map();
+    for (const p of inStock()) {
+        const e = g.get(p.nome) || { nome: p.nome, ids: [], qtd: 0, price: 0, pct: 0, ini: null, fim: null };
+        e.ids.push(p.id); e.qtd += p.quantidade; e.price = Math.max(e.price, p.preco_venda);
+        if ((Number(p.promo_pct) || 0) > e.pct) { e.pct = Number(p.promo_pct); e.ini = p.promo_inicio || null; e.fim = p.promo_fim || null; }
+        g.set(p.nome, e);
+    }
+    return [...g.values()].filter(e => !q || normTxt(e.nome).includes(q)).sort((a, b) => (b.pct > 0) - (a.pct > 0) || a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+let promoRows = [];
 function renderPromo() {
-    const rows = promoGroups();
-    $('#promoTable tbody').innerHTML = rows.map(e => {
+    promoRows = promoGroups();
+    $('#promoTable tbody').innerHTML = promoRows.map((e, i) => {
         const st = promoStatus(e), on = st === 'ativa';
         return `<tr>
-        <td><input type="checkbox" data-promo="${esc(e.nome)}" ${promoSel.has(e.nome) ? 'checked' : ''} aria-label="Selecionar ${esc(e.nome)}"></td>
         <td>${esc(e.nome)}</td><td class="num">${e.qtd}</td>
-        <td class="num">${on ? `<span class="promo-old">${fmtBRL(e.price)}</span>` : ''}${fmtBRL(on ? e.price * (1 - e.pct / 100) : e.price)}</td>
+        <td class="num">${on ? `<span class="promo-old">${fmtBRL(e.price)}</span>${fmtBRL(promoPrice(e))}` : fmtBRL(e.price)}</td>
         <td class="num">${e.pct ? `<span class="promo-tag${on ? '' : ' promo-off'}">${e.pct.toLocaleString('pt-BR')}% off</span>` : '—'}</td>
-        <td>${e.pct ? promoPeriodo(e) + (st === 'agendada' ? ' · começa depois' : st === 'encerrada' ? ' · encerrada' : '') : '—'}</td></tr>`;
+        <td>${e.pct ? promoPeriodo(e) + (st === 'agendada' ? ' · começa depois' : st === 'encerrada' ? ' · encerrada' : '') : '—'}</td>
+        <td><button type="button" class="btn ${e.pct ? 'btn-ghost' : 'btn-copper'}" data-promo-i="${i}">${e.pct ? 'Editar' : 'Criar promoção'}</button></td></tr>`;
     }).join('');
-    $('#pTodas').checked = rows.length > 0 && rows.every(e => promoSel.has(e.nome));
-    $('#pResumo').textContent = promoSel.size ? `${promoSel.size} peça(s) selecionada(s).` : 'Nenhuma peça selecionada.';
+    $('#promoEmpty').hidden = promoRows.length > 0;
 }
 $('#pBusca').oninput = renderPromo;
-$('#promoTable').onchange = e => {
-    const n = e.target.dataset.promo; if (n == null) return;
-    e.target.checked ? promoSel.add(n) : promoSel.delete(n); renderPromo();
-};
-$('#pTodas').onchange = e => { for (const r of promoGroups()) e.target.checked ? promoSel.add(r.nome) : promoSel.delete(r.nome); renderPromo(); };
-async function savePromo(pct, ini = null, fim = null) {
-    if (needsNet()) return;
-    if (!promoSel.size) return toast('Selecione pelo menos uma peça.', true);
-    const ids = promoGroups().filter(e => promoSel.has(e.nome)).flatMap(e => e.ids);
-    if (!ids.length) return toast('As peças selecionadas não estão na lista atual.', true);
-    const n = promoSel.size;
-    await run(() => api('/pecas/batch', { method: 'PATCH', body: { ids, updates: { promo_pct: pct, promo_inicio: pct ? ini : null, promo_fim: pct ? fim : null } } }),
-        pct ? `${pct.toLocaleString('pt-BR')}% de desconto em ${n} peça(s). A Nuvemshop atualiza em instantes.` : `Desconto tirado de ${n} peça(s).`);
-    promoSel.clear(); renderPromo();
+let promoEdit = null;
+function promoCalc() {
+    const n = parseBRL($('#prPreco').value), a = promoEdit.price;
+    if (!(n > 0)) { $('#prPct').textContent = '—'; $('#prInfo').textContent = 'Digite o novo preço.'; return null; }
+    if (n >= a) { $('#prPct').textContent = '—'; $('#prInfo').textContent = `O preço com desconto precisa ser menor que ${fmtBRL(a)}.`; return null; }
+    const pct = Math.round((a - n) / a * 10000) / 100;
+    $('#prPct').textContent = pct.toLocaleString('pt-BR') + '% de desconto';
+    $('#prInfo').textContent = `${fmtBRL(a - n)} a menos por peça.`;
+    return pct;
 }
-$('#pAplicar').onclick = () => {
-    const pct = parseBRL($('#pPct').value);
-    if (!(pct > 0 && pct < 100)) return toast('Digite um desconto entre 1 e 99%.', true);
-    const ini = $('#pInicio').value || null, fim = $('#pFim').value || null;
-    if (ini && fim && fim < ini) return toast('A data final precisa ser igual ou depois da data de início.', true);
-    if (fim && fim < hojeSP()) return toast('A data final já passou.', true);
-    savePromo(Math.round(pct * 100) / 100, ini, fim);
+$('#promoTable').onclick = e => {
+    const i = e.target.closest('[data-promo-i]')?.dataset.promoI; if (i == null) return;
+    promoEdit = promoRows[Number(i)];
+    $('#prNome').textContent = promoEdit.nome;
+    $('#prAtual').textContent = fmtBRL(promoEdit.price);
+    $('#prPreco').value = promoEdit.pct ? promoPrice(promoEdit).toFixed(2).replace('.', ',') : '';
+    $('#prInicio').value = promoEdit.ini || '';
+    $('#prFim').value = promoEdit.fim || '';
+    $('#prRemover').hidden = !promoEdit.pct;
+    $('#promoMsg').textContent = '';
+    promoCalc();
+    $('#promoDialog').showModal();
+    $('#prPreco').focus();
 };
-$('#pTirar').onclick = () => savePromo(null);
+$('#prPreco').oninput = promoCalc;
+$('#promoForm').onsubmit = async e => {
+    const act = e.submitter?.value;
+    if (act !== 'ok' && act !== 'remover') return;
+    e.preventDefault();
+    if (needsNet()) return;
+    let updates = { promo_pct: null, promo_inicio: null, promo_fim: null };
+    if (act === 'ok') {
+        const pct = promoCalc(), ini = $('#prInicio').value || null, fim = $('#prFim').value || null;
+        if (pct == null) return $('#promoMsg').textContent = $('#prInfo').textContent;
+        if (ini && fim && fim < ini) return $('#promoMsg').textContent = 'A data final precisa ser igual ou depois da data de início.';
+        if (fim && fim < hojeSP()) return $('#promoMsg').textContent = 'A data final já passou.';
+        updates = { promo_pct: pct, promo_inicio: ini, promo_fim: fim };
+    }
+    try { await api('/pecas/batch', { method: 'PATCH', body: { ids: promoEdit.ids, updates } }); }
+    catch (err) { $('#promoMsg').textContent = err.message; return; }
+    $('#promoDialog').close();
+    await run(async () => {}, act === 'ok' ? `Promoção salva: ${promoEdit.nome}. A Nuvemshop atualiza em instantes.` : `Promoção tirada: ${promoEdit.nome}.`);
+};
 
 // ---------- Data ----------
 const inStock = () => pecas.filter(p => p.status !== 'vendida');

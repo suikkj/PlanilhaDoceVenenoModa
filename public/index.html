@@ -178,24 +178,19 @@
     </div>
 
     <h2 class="view-title">Promoção na loja</h2>
-    <p class="hint">Escolha o desconto, o período (opcional) e as peças. Sem datas, vale a partir de agora até você tirar. Na Nuvemshop elas aparecem com o preço antigo riscado e o novo preço ao lado.</p>
+    <p class="hint">Clique em uma peça para colocar o preço de promoção. Na Nuvemshop ela aparece com o preço antigo riscado.</p>
     <div class="promo-bar">
-      <div class="field"><label for="pPct">Desconto (%)</label><input id="pPct" inputmode="decimal" placeholder="50" autocomplete="off"></div>
-      <div class="field"><label for="pInicio">Começa em</label><input id="pInicio" type="date"></div>
-      <div class="field"><label for="pFim">Termina em</label><input id="pFim" type="date"></div>
       <div class="field promo-search"><label for="pBusca">Buscar peça</label><input id="pBusca" type="search" placeholder="Nome da peça" autocomplete="off"></div>
-      <button class="btn btn-copper" id="pAplicar" type="button">Aplicar desconto</button>
-      <button class="btn" id="pTirar" type="button">Tirar desconto</button>
     </div>
-    <p class="hint" id="pResumo">Nenhuma peça selecionada.</p>
     <div class="table-wrap">
       <table class="grid" id="promoTable">
         <thead><tr>
-          <th><input type="checkbox" id="pTodas" aria-label="Selecionar todas as peças da lista"></th><th>Peça</th><th class="num">Em estoque</th><th class="num">Preço</th><th class="num">Promoção</th><th>Período</th>
+          <th>Peça</th><th class="num">Em estoque</th><th class="num">Preço</th><th class="num">Promoção</th><th>Período</th><th></th>
         </tr></thead>
         <tbody></tbody>
       </table>
     </div>
+    <p class="empty" id="promoEmpty" hidden>Nenhuma peça em estoque com esse nome.</p>
   </section>
 
   <!-- USUÁRIOS -->
@@ -330,6 +325,26 @@
     <div class="actions">
       <button value="cancel" formnovalidate class="btn btn-ghost">Cancelar</button>
       <button value="ok" class="btn btn-primary">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="promoDialog">
+  <form method="dialog" id="promoForm">
+    <h2>Promoção: <span id="prNome"></span></h2>
+    <p class="hint">Preço atual: <strong id="prAtual"></strong></p>
+    <div class="fields">
+      <label class="wide">Preço com desconto (R$) <input id="prPreco" inputmode="decimal" autocomplete="off" required placeholder="Ex.: 99,90"></label>
+      <label>Começa em <input id="prInicio" type="date"></label>
+      <label>Termina em <input id="prFim" type="date"></label>
+    </div>
+    <p class="sell-total"><span id="prPct">—</span> <small id="prInfo">Digite o novo preço.</small></p>
+    <p class="hint">Sem datas, a promoção começa agora e fica até você tirar.</p>
+    <p class="form-msg" id="promoMsg" role="alert"></p>
+    <div class="actions">
+      <button value="remover" formnovalidate class="btn btn-ghost" id="prRemover">Tirar promoção</button>
+      <button value="cancel" formnovalidate class="btn btn-ghost">Cancelar</button>
+      <button value="ok" class="btn btn-primary">Salvar promoção</button>
     </div>
   </form>
 </dialog>
