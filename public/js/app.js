@@ -2,6 +2,13 @@
 const $ = s => document.querySelector(s);
 const LOW_STOCK = 1; // quantity at or below this is flagged as "estoque baixo"
 const money = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+let linksData = null, linksMap = null;
+const linkOf = nome => {
+    if (!linksData) return null;
+    if (!linksMap) linksMap = new Map(linksData.map(l => [linkKey(l.nome), l.url]));
+    return linksMap.get(linkKey(nome)) || null;
+};
+const linkKey = v => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD in local time
 const fmtDate = d => d ? d.slice(0, 10).split('-').reverse().join('/') : '–';
@@ -295,6 +302,7 @@ async function load() {
     renderGastos();
     renderSales();
     renderPromo();
+    if (!offline && !linksData) loadLinks().then(renderStock);
     if (isAdmin && !offline) { loadUsers(); loadNuvemshop(); renderPush(); }
 }
 
@@ -335,7 +343,7 @@ function renderStock() {
         const low = p.quantidade <= LOW_STOCK;
         return `<tr class="${low ? 'low' : ''}">
           <td class="c-check"><input type="checkbox" data-id="${p.id}" ${selected.has(p.id) ? 'checked' : ''} aria-label="Selecionar ${esc(p.nome)}"></td>
-          <td><div class="peca-cell">${p.fotos?.length ? `<button type="button" class="thumb-btn" data-fotos="${p.id}" aria-label="Ver ${p.fotos.length} ${p.fotos.length === 1 ? 'foto' : 'fotos'} de ${esc(p.nome)}"><img class="thumb" src="${esc(p.fotos[0].url)}" alt="" loading="lazy" onerror="this.parentElement.remove()">${p.fotos.length > 1 ? `<span class="thumb-count">${p.fotos.length}</span>` : ''}</button>` : ''}<button type="button" class="peca-btn" data-info="${p.id}" aria-label="Ver descrição de ${esc(p.nome)}"><strong>${esc(p.nome)}</strong>${p.cor ? `<span class="sub">${esc(uniqJoin(p.cor))}</span>` : ''}</button></div></td>
+          <td><div class="peca-cell">${p.fotos?.length ? `<button type="button" class="thumb-btn" data-fotos="${p.id}" aria-label="Ver ${p.fotos.length} ${p.fotos.length === 1 ? 'foto' : 'fotos'} de ${esc(p.nome)}"><img class="thumb" src="${esc(p.fotos[0].url)}" alt="" loading="lazy" onerror="this.parentElement.remove()">${p.fotos.length > 1 ? `<span class="thumb-count">${p.fotos.length}</span>` : ''}</button>` : ''}<button type="button" class="peca-btn" data-info="${p.id}" aria-label="Ver descrição de ${esc(p.nome)}"><strong>${esc(p.nome)}</strong>${p.cor ? `<span class="sub">${esc(uniqJoin(p.cor))}</span>` : ''}</button>${linkOf(p.nome) ? `<button type="button" class="link-copy-ico" data-url="${esc(linkOf(p.nome))}" aria-label="Copiar link de ${esc(p.nome)} na loja" title="Copiar link da loja"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button>` : ''}</div></td>
           <td data-l="Tam.">${esc(uniqJoin(p.tamanho)) || '–'}</td>
           <td class="num" data-l="Qtd."><span>${p.quantidade}${low ? '<span class="tag">baixo</span>' : ''}</span></td>
           <td class="num" data-l="Compra">${money(p.preco_comprado_unitario)}</td>
@@ -1291,11 +1299,18 @@ localStorage.getItem('accessToken') && !resetToken ? start() : showAuth(); // a 
 
 
 // ---- Links da loja: link de cada peça para copiar ----
-let linksData = null;
+async function copyText(t) {
+    try { await navigator.clipboard.writeText(t); }
+    catch { const x = document.createElement('textarea'); x.value = t; document.body.append(x); x.select(); document.execCommand('copy'); x.remove(); }
+}
+document.addEventListener('click', async e => {
+    const b = e.target.closest('.link-copy-ico'); if (!b) return;
+    e.stopPropagation(); await copyText(b.dataset.url); b.classList.add('done'); toast('Link copiado'); setTimeout(() => b.classList.remove('done'), 1500);
+});
 async function loadLinks(fresh) {
     const ul = document.getElementById('linksList');
-    ul.innerHTML = '<li class="hint">Carregando…</li>';
-    try { linksData = await api('/nuvemshop/links' + (fresh ? '?fresh=1' : '')); renderLinks(); }
+    if (!linksData) ul.innerHTML = '<li class="hint">Carregando…</li>';
+    try { linksData = await api('/nuvemshop/links' + (fresh ? '?fresh=1' : '')); linksMap = null; renderLinks(); }
     catch (err) { ul.innerHTML = `<li class="hint">Não deu para buscar os links: ${esc(err.message)}</li>`; }
 }
 function renderLinks() {

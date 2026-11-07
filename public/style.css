@@ -434,3 +434,6 @@ textarea { resize: vertical; min-height: 5rem; }
 .link-info span{font-size:12px;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .link-copy{flex:none;min-width:96px;min-height:40px}
 .link-copy.done{background:#2e7d32;color:#fff;border-color:#2e7d32}
+.link-copy-ico{flex:none;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;margin-left:4px;border:1px solid var(--border,#ddd);border-radius:8px;background:transparent;color:inherit;cursor:pointer;padding:0}
+.link-copy-ico:hover{background:rgba(0,0,0,.05)}
+.link-copy-ico.done{background:#2e7d32;border-color:#2e7d32;color:#fff}
