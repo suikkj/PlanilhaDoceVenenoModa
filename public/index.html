@@ -53,6 +53,7 @@
       <a href="#vendas" data-tab="vendas">Vendas</a>
       <a href="#gastos" data-tab="gastos">Gastos</a>
       <a href="#desconto" data-tab="desconto">Desconto</a>
+      <a href="#links" data-tab="links">Links</a>
       <a href="#usuarios" data-tab="usuarios" id="tabUsuarios" hidden>Usuários <span id="pendingBadge" class="badge" hidden></span></a>
       <a href="#nuvemshop" data-tab="nuvemshop" id="tabNuvem" hidden>Nuvemshop <span id="nsBadge" class="badge" hidden></span></a>
     </nav>
@@ -194,6 +195,16 @@
   </section>
 
   <!-- USUÁRIOS -->
+  <section id="view-links" class="view" hidden>
+    <h2 class="view-title">Links da loja</h2>
+    <p class="hint">Toque em <strong>Copiar</strong> para levar o link da peça e colar no adesivo de link do Instagram.</p>
+    <div class="links-bar">
+      <input id="lBusca" type="search" placeholder="Buscar peça…" autocomplete="off" aria-label="Buscar peça">
+      <button type="button" id="lAtualizar" class="btn-secondary">Atualizar</button>
+    </div>
+    <ul id="linksList" class="links-list" aria-live="polite"><li class="hint">Carregando…</li></ul>
+  </section>
+
   <section id="view-nuvemshop" class="view" hidden>
     <h2 class="view-title">Nuvemshop</h2>
     <div class="ns-status" id="nsStatus"></div>

@@ -146,7 +146,7 @@ function showTab() {
     document.querySelectorAll('.view').forEach(v => v.hidden = v.id !== 'view-' + tab);
     document.querySelectorAll('.tabs a').forEach(a => a.toggleAttribute('aria-current', a.dataset.tab === tab));
 }
-window.addEventListener('hashchange', showTab);
+window.addEventListener('hashchange', () => { showTab(); if (location.hash === '#links' && !linksData) loadLinks(); });
 
 // ---------- Desconto ----------
 // "1.234,56", "149,99" or "149.99" -> number; anything else -> NaN.
@@ -1288,3 +1288,30 @@ async function stopPush(token) {
 }
 
 localStorage.getItem('accessToken') && !resetToken ? start() : showAuth(); // a reset link always opens the new-password screen
+
+
+// ---- Links da loja: link de cada peça para copiar ----
+let linksData = null;
+async function loadLinks(fresh) {
+    const ul = document.getElementById('linksList');
+    ul.innerHTML = '<li class="hint">Carregando…</li>';
+    try { linksData = await api('/nuvemshop/links' + (fresh ? '?fresh=1' : '')); renderLinks(); }
+    catch (err) { ul.innerHTML = `<li class="hint">Não deu para buscar os links: ${esc(err.message)}</li>`; }
+}
+function renderLinks() {
+    const q = normTxt(document.getElementById('lBusca').value);
+    const rows = (linksData || []).filter(l => !q || normTxt(l.nome).includes(q));
+    document.getElementById('linksList').innerHTML = rows.length ? rows.map(l => `
+      <li class="link-row"><div class="link-info"><strong>${esc(l.nome)}</strong><span>${esc(l.url.replace(/^https?:\/\/(www\.)?/, ''))}</span></div>
+      <button type="button" class="link-copy" data-url="${esc(l.url)}">Copiar</button></li>`).join('') : '<li class="hint">Nenhuma peça encontrada.</li>';
+}
+document.getElementById('lBusca').addEventListener('input', renderLinks);
+document.getElementById('lAtualizar').addEventListener('click', () => loadLinks(true));
+document.getElementById('linksList').addEventListener('click', async e => {
+    const b = e.target.closest('.link-copy'); if (!b) return;
+    try { await navigator.clipboard.writeText(b.dataset.url); }
+    catch { const t = document.createElement('textarea'); t.value = b.dataset.url; document.body.append(t); t.select(); document.execCommand('copy'); t.remove(); }
+    document.querySelectorAll('.link-copy.done').forEach(x => { x.classList.remove('done'); x.textContent = 'Copiar'; });
+    b.classList.add('done'); b.textContent = 'Copiado ✓';
+});
+if (location.hash === '#links') loadLinks();

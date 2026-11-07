@@ -340,6 +340,26 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         res.json({ message: 'Avisos de pedidos ativados.' });
     }));
 
+    // Store link of every published product, for copying into Instagram stickers. Cached 10 min.
+    let linksCache = { at: 0, data: null };
+    app.get('/api/nuvemshop/links', auth, route(async (req, res) => {
+        if (!cfg) return res.status(503).json({ error: 'Nuvemshop não configurada.' });
+        if (!linksCache.data || Date.now() - linksCache.at > 600000 || req.query.fresh) {
+            const all = [];
+            for (let page = 1; page <= 20; page++) {
+                let rows;
+                try { rows = await ns(`/products?per_page=200&page=${page}&published=true&fields=id,name,canonical_url,handle`); }
+                catch (err) { if (err.status === 404) break; throw err; } // 404 = past the last page
+                all.push(...rows);
+                if (rows.length < 200) break;
+            }
+            const pick = v => (v && typeof v === 'object') ? (v.pt || Object.values(v)[0]) : v;
+            linksCache = { at: Date.now(), data: all.map(p => ({ nome: pick(p.name), url: p.canonical_url || `https://www.docevenenomoda.com.br/produtos/${pick(p.handle)}/` }))
+                .filter(p => p.nome && !/sacola/i.test(p.nome)).sort((a, b) => a.nome.localeCompare(b.nome, 'pt')) };
+        }
+        res.json(linksCache.data);
+    }));
+
     app.get('/api/nuvemshop/status', auth, adminOnly, route(async (req, res) => {
         const out = { configured: !!cfg, storeId: cfg?.store_id || null, storeName: null, webhooksOk: false, apiError: null, needsMigration: false, pedidos: [] };
         try {

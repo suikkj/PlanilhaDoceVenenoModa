@@ -424,3 +424,13 @@ textarea { resize: vertical; min-height: 5rem; }
 .promo-tag { display: inline-block; padding: .1rem .5rem; border-radius: 999px; background: var(--copper); color: var(--moss-deep); font-size: .8rem; font-weight: 700; }
 .promo-old { text-decoration: line-through; color: var(--muted); margin-right: .3rem; }
 .promo-off { background: var(--line); color: var(--muted); }
+
+/* Links da loja */
+.links-bar{display:flex;gap:8px;margin:12px 0}
+.links-bar input{flex:1;min-width:0}
+.links-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.link-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--border,#ddd);border-radius:10px;background:var(--card,#fff)}
+.link-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.link-info span{font-size:12px;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.link-copy{flex:none;min-width:96px;min-height:40px}
+.link-copy.done{background:#2e7d32;color:#fff;border-color:#2e7d32}
