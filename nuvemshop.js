@@ -253,7 +253,37 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
     }
 
     // Store-only extras (gift bag) are not stock pieces: no sale row, no pending item, no product sync.
-    const isExtra = item => item.sku === 'SACOLA-PRESENTE' || /^sacola de presente/i.test(String(item.name || ''));
+    const isGiftCard = item => /^CARTAO-PRESENTE/i.test(String(item.sku || '')) || /^cart[aã]o[- ]presente/i.test(String(item.name || ''));
+    const isExtra = item => isGiftCard(item) || item.sku === 'SACOLA-PRESENTE' || /^sacola de presente/i.test(String(item.name || ''));
+
+    // Each paid gift card becomes a one-use coupon worth the card's face value (from the SKU, e.g. CARTAO-PRESENTE-100),
+    // valid 30 days like the printed card. Rows are saved one by one so a failure halfway keeps what was created.
+    const GIFT_DAYS = 30;
+    const giftCode = () => 'DV' + Array.from(crypto.randomBytes(8), b => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 32]).join('');
+    async function createGiftCards(order) {
+        const out = [];
+        for (const item of (order.products || []).filter(isGiftCard)) {
+            const valor = Number(String(item.sku || '').match(/(\d+)$/)?.[1]) || Number(item.price) || 0;
+            if (!valor) continue;
+            for (let i = 0; i < (Number(item.quantity) || 0); i++) {
+                const codigo = giftCode();
+                const validade = spDate(new Date(Date.now() + GIFT_DAYS * 864e5).toISOString());
+                const cupom = await ns('/coupons', { method: 'POST', body: {
+                    code: codigo, type: 'absolute', value: valor.toFixed(2), max_uses: 1, end_date: validade, includes_shipping: false,
+                } });
+                check(await supabase.from('cartoes_presente').insert([{ codigo, valor, validade, cupom_id: String(cupom.id ?? ''),
+                    pedido_id: String(order.id), pedido_numero: String(order.number ?? ''), cliente: order.customer?.name || order.contact_name || null }]));
+                out.push({ codigo, valor, validade });
+            }
+        }
+        if (out.length) {
+            const lista = out.map(c => `${c.codigo} (R$ ${c.valor}, até ${c.validade.split('-').reverse().join('/')})`).join('; ');
+            // Note on the order, so the code is at hand when packing the printed card. A failure here must not lose the coupons.
+            await ns(`/orders/${order.id}`, { method: 'PUT', body: { owner_note: `Cartão-presente: ${lista}` } }).catch(() => {});
+            await notifyAdmins('Cartão-presente vendido', `Pedido #${order.number}: escreva no cartão o código ${lista}.`, '/#nuvemshop');
+        }
+        return out;
+    }
 
     async function processPaid(orderId) {
         // Claim the order first: Nuvemshop may deliver the same webhook twice, and a sale must never be written twice.
@@ -265,6 +295,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         catch (err) { await release(); throw err; } // nothing written yet: let Nuvemshop's retry try again
         if (order.payment_status !== 'paid') { await release(); return 'nao-pago'; }
         try {
+            await createGiftCards(order);
             const stockRows = check(await supabase.from('pecas').select('*')).filter(p => p.status !== 'vendida' && Number(p.quantidade) > 0)
                 .map(p => ({ ...p, quantidade: Number(p.quantidade), preco_venda: Number(p.preco_venda) }))
                 .sort((a, b) => String(a.data_compra || '9999').localeCompare(String(b.data_compra || '9999'))); // oldest stock leaves first
@@ -303,6 +334,11 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         if (!ped || ped.status === 'cancelado') return 'ignorado';
         const order = await ns(`/orders/${orderId}`);
         if (order.status !== 'cancelled') return 'nao-cancelado';
+        // Gift cards of a cancelled order: remove their coupons so they can't be used.
+        for (const c of check(await supabase.from('cartoes_presente').select('*').eq('pedido_id', String(orderId)).eq('status', 'ativo'))) {
+            if (c.cupom_id) await ns(`/coupons/${c.cupom_id}`, { method: 'DELETE' }).catch(err => { if (err.status !== 404) throw err; });
+            check(await supabase.from('cartoes_presente').update({ status: 'cancelado' }).eq('codigo', c.codigo));
+        }
         const rows = check(await supabase.from('pecas').select('*').eq('pedido_nuvemshop', String(orderId)))
             .filter(r => r.status === 'vendida');
         for (const r of rows) {
@@ -380,6 +416,8 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
             const display = new Map(check(await supabase.from('pecas').select('nome')).map(p => [norm(p.nome), p.nome])); // rows are keyed by the normalized name
             out.produtos = { enviados: prods.filter(p => p.product_id).length, erros: prods.filter(p => p.erro).map(p => ({ nome: display.get(p.nome) || p.nome, erro: p.erro })) };
         } catch { out.produtos = null; }
+        try { out.cartoes = check(await supabase.from('cartoes_presente').select('*').order('created_at', { ascending: false }).limit(50)); }
+        catch { out.cartoes = []; }
         res.json(out);
     }));
 

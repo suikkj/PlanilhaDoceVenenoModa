@@ -1150,7 +1150,12 @@ async function loadNuvemshop() {
         return `<li><span><strong>${head(p)}</strong><span class="sub">${label}</span></span></li>`;
     }).join('');
     $('#nsRecentEmpty').hidden = recent.length > 0 || !st.webhooksOk;
+    const gifts = st.cartoes || [];
+    $('#nsGift').innerHTML = gifts.map(c => `<li><span><strong class="link-row">${esc(c.codigo)} <button class="link-copy-ico" data-url="${esc(c.codigo)}" data-msg="Código copiado" title="Copiar código" aria-label="Copiar código ${esc(c.codigo)}"></button></strong>
+        <span class="sub">${money(c.valor)} · Pedido #${esc(c.pedido_numero || c.pedido_id)}${c.cliente ? `, ${esc(c.cliente)}` : ''} · ${c.status === 'cancelado' ? 'Cancelado' : `Válido até ${fmtDate(c.validade)}`}</span></span></li>`).join('');
+    $('#nsGiftEmpty').hidden = gifts.length > 0;
 }
+
 $('#nsStatus').onclick = async e => {
     if (e.target.id !== 'nsSetup') return;
     e.target.disabled = true;
@@ -1305,7 +1310,7 @@ async function copyText(t) {
 }
 document.addEventListener('click', async e => {
     const b = e.target.closest('.link-copy-ico'); if (!b) return;
-    e.stopPropagation(); await copyText(b.dataset.url); b.classList.add('done'); toast('Link copiado'); setTimeout(() => b.classList.remove('done'), 1500);
+    e.stopPropagation(); await copyText(b.dataset.url); b.classList.add('done'); toast(b.dataset.msg || 'Link copiado'); setTimeout(() => b.classList.remove('done'), 1500);
 });
 async function loadLinks(fresh) {
     const ul = document.getElementById('linksList');
