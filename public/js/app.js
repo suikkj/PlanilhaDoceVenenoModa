@@ -249,7 +249,8 @@ $('#promoForm').onsubmit = async e => {
 };
 
 // ---------- Data ----------
-const inStock = () => pecas.filter(p => p.status !== 'vendida');
+const inStock = () => pecas.filter(p => p.status !== 'vendida' && p.status !== 'reservada');
+const reserved = () => pecas.filter(p => p.status === 'reservada');
 const sold = () => pecas.filter(p => p.status === 'vendida');
 const saleProfit = p => p.lucro != null ? Number(p.lucro) : (p.preco_venda - p.preco_comprado_unitario) * p.quantidade;
 const STALE_DAYS = 60;
@@ -301,6 +302,7 @@ async function load() {
     renderStock();
     renderGastos();
     renderSales();
+    renderReservas();
     renderPromo();
     if (!offline && !linksData) loadLinks().then(renderStock);
     if (isAdmin && !offline) { loadUsers(); loadNuvemshop(); renderPush(); }
@@ -352,6 +354,7 @@ function renderStock() {
           <td data-l="Comprada em"><span>${fmtDate(p.data_compra)}${isStale(p) ? '<span class="tag">parada</span>' : ''}</span></td>
           <td class="row-actions">
             <button class="btn btn-primary btn-sm" data-sell="${p.id}">Vender</button>
+            <button class="btn btn-ghost btn-sm" data-reserve="${p.id}">Reservar</button>
             <button class="btn-link" data-edit="${p.id}">Editar</button>
           </td></tr>`;
     }).join('');
@@ -394,6 +397,7 @@ $('#stockTable tbody').onclick = e => {
     if (infoBtn) { const p = pecas.find(x => x.id === +infoBtn.dataset.info); showInfo(p.nome, [p.descricao || 'Esta peça ainda não tem descrição. Use Editar para adicionar.', p.medidas && `Medidas da peça: ${p.medidas}`].filter(Boolean).join('\n\n')); return; }
     if (t.dataset.id) { t.checked ? selected.add(+t.dataset.id) : selected.delete(+t.dataset.id); renderBulk(); }
     if (t.dataset.sell) openSell(pecas.find(p => p.id === +t.dataset.sell));
+    if (t.dataset.reserve) openReserve(pecas.find(p => p.id === +t.dataset.reserve));
     if (t.dataset.edit) openPeca(pecas.find(p => p.id === +t.dataset.edit));
 };
 
@@ -781,6 +785,80 @@ $('#sellForm').onsubmit = async e => {
     $('#sellDialog').close();
     await run(() => registerSale(p, sellStock, v.cor, v.tam, n.q, n.desc, data_venda, saleFields($('#sPay'), $('#sCli'), $('#sTel'))),
         `Venda registrada: ${money(n.total)}.`);
+};
+
+// ---------- Reservas ----------
+// A reservation is its own row (status 'reservada') holding q units taken from a stock row, like a partial sale.
+let reserving = null, resStock = null;
+function openReserve(p) {
+    if (needsNet()) return;
+    reserving = p; resStock = stockUnits(p);
+    $('#rNome').textContent = p.nome;
+    initVariant($('#resForm'), resStock);
+    $('#rQtd').value = 1; $('#rCli').value = $('#rTel').value = ''; $('#resMsg').textContent = '';
+    $('#rCli').closest('label').hidden = $('#rTel').closest('label').hidden = !hasCol('cliente_nome');
+    $('#clienteList').innerHTML = uniq(sold().map(x => x.cliente_nome).filter(Boolean)).map(c => `<option value="${esc(c)}">`).join('');
+    updateReserve();
+    $('#resDialog').showModal();
+}
+function updateReserve() {
+    const v = syncVariant($('#resForm'), reserving, resStock), desc = [v.cor, v.tam].filter(Boolean).join(', ');
+    $('#rInfo').textContent = `${v.max} ${v.max === 1 ? 'unidade' : 'unidades'}${desc ? ` em ${desc}` : ''} no estoque.`;
+    return v;
+}
+$('#rCor').onchange = $('#rTam').onchange = updateReserve;
+$('#rCli').onchange = fillPhone($('#rCli'), $('#rTel'));
+$('#resForm').onsubmit = async e => {
+    if (e.submitter?.value !== 'ok') return;
+    e.preventDefault();
+    const p = reserving, v = updateReserve(), q = parseInt($('#rQtd').value, 10) || 0;
+    if (q < 1 || q > v.max) { $('#resMsg').textContent = v.max ? `Reserve de 1 a ${v.max} unidades nessa cor e tamanho.` : 'Não há unidades nessa cor e tamanho.'; return; }
+    const res = { status: 'reservada', reservada_em: today(), quantidade: q, cor: v.cor || null, tamanho: v.tam || null,
+        ...(hasCol('cliente_nome') && { cliente_nome: $('#rCli').value.trim() || null, cliente_telefone: $('#rTel').value.trim() || null }) };
+    $('#resDialog').close();
+    await run(async () => {
+        if (q === p.quantidade) return api('/pecas/' + p.id, { method: 'PUT', body: { ...res, reserva_origem: null } });
+        // Reserved row first, so a failure never loses stock.
+        await api('/pecas', { method: 'POST', body: { nome: p.nome, data_compra: p.data_compra, preco_comprado_unitario: p.preco_comprado_unitario,
+            preco_venda: p.preco_venda, fornecedor: p.fornecedor ?? null, reserva_origem: p.id, ...res } });
+        await api('/pecas/' + p.id, { method: 'PUT', body: { quantidade: p.quantidade - q, ...afterSale(resStock, v.cor, v.tam, q) } });
+    }, `Reservado: ${p.nome}. A loja online atualiza em instantes.`);
+};
+function renderReservas() {
+    const rows = reserved().sort((a, b) => String(b.reservada_em || '').localeCompare(String(a.reservada_em || '')));
+    $('#resTable tbody').innerHTML = rows.map(r => `<tr>
+        <td data-l="Reservada em">${fmtDate(r.reservada_em)}</td>
+        <td><strong>${esc(r.nome)}</strong>${r.cor ? `<span class="sub">${esc(uniqJoin(r.cor))}</span>` : ''}</td>
+        <td data-l="Tam.">${esc(uniqJoin(r.tamanho)) || '–'}</td>
+        <td class="num" data-l="Qtd.">${r.quantidade}</td>
+        <td data-l="Cliente">${r.cliente_nome ? esc(r.cliente_nome) + (r.cliente_telefone ? `<span class="sub">${esc(r.cliente_telefone)}</span>` : '') : '–'}</td>
+        <td class="row-actions">
+          <button class="btn btn-primary btn-sm" data-res-sell="${r.id}">Vender</button>
+          <button class="btn-link" data-res-back="${r.id}">Retornar</button>
+        </td></tr>`).join('');
+    $('#resTable').hidden = !rows.length;
+    $('#resEmpty').hidden = rows.length > 0;
+    $('#resBadge').hidden = !rows.length;
+    $('#resBadge').textContent = rows.length;
+}
+// Back to stock: merged into the row it came from when that row is still in stock, otherwise the row itself goes back.
+async function returnReserva(r) {
+    const origin = pecas.find(p => p.id === Number(r.reserva_origem) && p.status === 'estoque');
+    if (!origin) return api('/pecas/' + r.id, { method: 'PUT', body: { status: 'estoque', reservada_em: null, reserva_origem: null, cliente_nome: null, cliente_telefone: null } });
+    await api('/pecas/' + origin.id, { method: 'PUT', body: { quantidade: origin.quantidade + r.quantidade, ...afterReturn(stockUnits(origin), r.cor || '', r.tamanho || '', r.quantidade) } });
+    await api('/pecas/' + r.id, { method: 'DELETE' });
+}
+$('#resTable tbody').onclick = async e => {
+    const t = e.target, r = pecas.find(p => p.id === +(t.dataset.resSell || t.dataset.resBack));
+    if (!r) return;
+    if (t.dataset.resSell) {
+        openSell(r);
+        // the customer who reserved is the buyer, unless changed
+        if (r.cliente_nome && !$('#sCli').closest('label').hidden) { $('#sCli').value = r.cliente_nome; $('#sTel').value = r.cliente_telefone || ''; }
+        return;
+    }
+    if (needsNet() || !await confirmAction('Retornar ao estoque?', `${r.quantidade} ${r.nome} ${r.quantidade === 1 ? 'volta' : 'voltam'} ao estoque e à loja online.`, 'Retornar')) return;
+    await run(() => returnReserva(r), `${r.nome} voltou ao estoque.`);
 };
 
 // Venda em lote: each selected piece gets its own color, size and quantity; date, discount, payment and customer are shared.

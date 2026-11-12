@@ -25,6 +25,15 @@ function afterSale(s, cor, tam, q) {
     const drop = (l, v) => { let k = q; return l.filter(x => !(k > 0 && x === v && k--)); };
     return { cor: joinList(drop(s.c, cor)), tamanho: joinList(drop(s.t, tam)) };
 }
+// Stock after q units of cor/tam come back (a reservation returned): the reverse of afterSale.
+function afterReturn(s, cor, tam, q) {
+    if (s.paired) {
+        const units = [...s.units, ...Array(q).fill({ cor, tam })];
+        return { cor: joinList(units.map(u => u.cor).filter(Boolean)), tamanho: joinList(units.map(u => u.tam).filter(Boolean)) };
+    }
+    const add = (l, v) => v ? [...l, ...Array(q).fill(v)] : l;
+    return { cor: joinList(add(s.c, cor)), tamanho: joinList(add(s.t, tam)) };
+}
 
 // One spelling per color ("Preta" -> "Preto", "Azul BB" -> "Azul Bebê"). Same rules as dv_cor in the database
 // (supabase/migrations/20261029010000_normalizar_textos.sql); keep both in sync.
@@ -37,4 +46,4 @@ const canonCor = s => String(s ?? '').trim().toLowerCase().replace(/terra\s+cota
     .split('/').map(p => p.trim()).filter(Boolean)
     .map(p => p.split(/\s+/).map(w => COR_PALAVRA[w.normalize('NFD').replace(/[\u0300-\u036f]/g, '')] || cap(w)).join(' ')).join('/');
 
-if (typeof module !== 'undefined') module.exports = { splitList, stockUnits, available, afterSale, joinList, canonCor };
+if (typeof module !== 'undefined') module.exports = { splitList, stockUnits, available, afterSale, afterReturn, joinList, canonCor };

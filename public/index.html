@@ -50,6 +50,7 @@
     <img src="imagens/Logo Site 3.png" alt="Doce Veneno" class="topbar-logo">
     <nav class="tabs" aria-label="Seções">
       <a href="#estoque" data-tab="estoque">Estoque</a>
+      <a href="#reservas" data-tab="reservas">Reservas <span id="resBadge" class="badge" hidden></span></a>
       <a href="#vendas" data-tab="vendas">Vendas</a>
       <a href="#gastos" data-tab="gastos">Gastos</a>
       <a href="#desconto" data-tab="desconto">Desconto</a>
@@ -104,6 +105,19 @@
       </table>
     </div>
     <p class="empty" id="stockEmpty" hidden></p>
+  </section>
+
+  <!-- RESERVAS -->
+  <section id="view-reservas" class="view" hidden>
+    <h2 class="view-title">Reservas</h2>
+    <p class="hint">Peças separadas para uma cliente: saem do estoque e da loja online, mas ainda não contam como venda.</p>
+    <div class="table-wrap">
+      <table class="grid" id="resTable">
+        <thead><tr><th>Reservada em</th><th>Peça</th><th>Tam.</th><th class="num">Qtd.</th><th>Cliente</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="empty" id="resEmpty" hidden>Nenhuma peça reservada. Use "Reservar" no Estoque.</p>
   </section>
 
   <!-- VENDAS -->
@@ -318,6 +332,27 @@
     <div class="actions">
       <button value="cancel" formnovalidate class="btn btn-ghost">Cancelar</button>
       <button value="ok" class="btn btn-primary">Registrar venda</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Reservar -->
+<dialog id="resDialog">
+  <form method="dialog" id="resForm">
+    <h2>Reservar <span id="rNome"></span></h2>
+    <p class="hint" id="rInfo"></p>
+    <div class="fields">
+      <label>Cor <select id="rCor" class="v-cor"></select></label>
+      <label>Tamanho <select id="rTam" class="v-tam"></select></label>
+      <label>Quantidade <input id="rQtd" class="v-qtd" type="number" min="1" value="1" required></label>
+      <label>Cliente (opcional) <input id="rCli" list="clienteList" autocomplete="off"></label>
+      <label>Telefone (opcional) <input id="rTel" type="tel" inputmode="tel" autocomplete="off"></label>
+    </div>
+    <p class="hint">Sai do estoque e da loja online agora, para ninguém comprar a mesma peça. Não conta como venda.</p>
+    <p class="form-msg" id="resMsg" role="alert"></p>
+    <div class="actions">
+      <button value="cancel" formnovalidate class="btn btn-ghost">Cancelar</button>
+      <button value="ok" class="btn btn-primary">Reservar</button>
     </div>
   </form>
 </dialog>

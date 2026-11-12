@@ -41,7 +41,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Only these columns can be written from the browser.
 const PECA_FIELDS = ['nome', 'quantidade', 'preco_comprado_unitario', 'preco_venda', 'cor', 'tamanho',
     'data_compra', 'status', 'data_venda', 'desconto', 'lucro',
-    'forma_pagamento', 'cliente_nome', 'cliente_telefone', 'fornecedor', 'descricao', 'medidas', 'promo_pct', 'promo_inicio', 'promo_fim'];
+    'forma_pagamento', 'cliente_nome', 'cliente_telefone', 'fornecedor', 'descricao', 'medidas', 'promo_pct', 'promo_inicio', 'promo_fim',
+    'reserva_origem', 'reservada_em'];
 const pick = (obj = {}) => Object.fromEntries(Object.entries(obj).filter(([k]) => PECA_FIELDS.includes(k)));
 const isAdmin = email => adminEmails.includes(String(email).toLowerCase());
 
@@ -343,7 +344,7 @@ function fullCsv(pecas) {
     const head = ['Situação', 'Peça', 'Cor', 'Tamanho', 'Quantidade', 'Comprada em', 'Preço de compra', 'Preço de venda',
         'Vendida em', 'Desconto %', 'Lucro', 'Pagamento', 'Cliente', 'Telefone', 'Fornecedor'];
     const rows = [...pecas].sort((a, b) => (a.status === 'vendida') - (b.status === 'vendida') || String(a.nome).localeCompare(String(b.nome), 'pt-BR'))
-        .map(p => [p.status === 'vendida' ? 'Vendida' : 'Em estoque', p.nome, p.cor, p.tamanho, p.quantidade, date(p.data_compra),
+        .map(p => [p.status === 'vendida' ? 'Vendida' : p.status === 'reservada' ? 'Reservada' : 'Em estoque', p.nome, p.cor, p.tamanho, p.quantidade, date(p.data_compra),
             num(p.preco_comprado_unitario), num(p.preco_venda), date(p.data_venda), p.desconto ?? '', num(p.lucro),
             PAY[p.forma_pagamento] || '', p.cliente_nome, p.cliente_telefone, p.fornecedor]);
     return '\ufeff' + [head, ...rows].map(r => r.map(cell).join(';')).join('\r\n');
@@ -368,7 +369,7 @@ app.get('/api/cron/backup', route(async (req, res) => {
     const recipients = [...new Set([...usuarios.filter(u => u.status === 'active').map(u => u.email.toLowerCase()), ...adminEmails])];
     if (!recipients.length) return res.status(503).json({ message: 'Nenhum usuário ativo para receber o backup.' });
     const day = new Date().toISOString().slice(0, 10);
-    const emEstoque = pecas.filter(p => p.status !== 'vendida').reduce((n, p) => n + (Number(p.quantidade) || 0), 0);
+    const emEstoque = pecas.filter(p => p.status !== 'vendida' && p.status !== 'reservada').reduce((n, p) => n + (Number(p.quantidade) || 0), 0);
     await sendMail({ to: process.env.EMAIL_USER, bcc: recipients }, `Backup semanal Doce Veneno ${day.split('-').reverse().join('/')}`,
         `Backup automático do estoque.\n\n${emEstoque} peças em estoque, ${pecas.length} registros no total.\n\n` +
         `A planilha abre no Excel. O arquivo .json guarda tudo para restaurar o sistema se for preciso; guarde-o em lugar seguro.`,

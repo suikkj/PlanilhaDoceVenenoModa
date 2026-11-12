@@ -7,6 +7,8 @@ const { stockUnits, available, afterSale, splitList, canonCor } = require('./pub
 const API = 'https://api.nuvemshop.com.br/2025-03';
 const UA = 'Doce Veneno Estoque (lucasoliprogramador@gmail.com)';
 
+// Reserved units are kept for a customer: out of the online stock, and never matched to an online order.
+const isStock = p => p.status !== 'vendida' && p.status !== 'reservada';
 const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 const spDate = iso => new Date(iso || Date.now()).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
 // Order items are named "Calça Cargo (Preta, GG)" when they have variants; the piece here is just "Calça Cargo".
@@ -142,7 +144,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
     async function syncName(nome) {
         const key = norm(nome);
         const named = check(await supabase.from('pecas').select('*')).filter(p => norm(p.nome) === key);
-        const rows = named.filter(p => p.status !== 'vendida' && Number(p.quantidade) > 0);
+        const rows = named.filter(p => isStock(p) && Number(p.quantidade) > 0);
         // Photos of every row with this name, sold ones included, so a product keeps its photos while restocking.
         const desc = descOf(named);
         const pronto = fotos => fotos.length > 0 && named.some(p => String(p.descricao || '').trim()); // photo + description in the sheet
@@ -296,7 +298,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         if (order.payment_status !== 'paid') { await release(); return 'nao-pago'; }
         try {
             await createGiftCards(order);
-            const stockRows = check(await supabase.from('pecas').select('*')).filter(p => p.status !== 'vendida' && Number(p.quantidade) > 0)
+            const stockRows = check(await supabase.from('pecas').select('*')).filter(p => isStock(p) && Number(p.quantidade) > 0)
                 .map(p => ({ ...p, quantidade: Number(p.quantidade), preco_venda: Number(p.preco_venda) }))
                 .sort((a, b) => String(a.data_compra || '9999').localeCompare(String(b.data_compra || '9999'))); // oldest stock leaves first
             const pendentes = [];
@@ -428,7 +430,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         const pecas = check(await supabase.from('pecas').select('nome, status, quantidade'));
         const mapped = check(await supabase.from('nuvemshop_produtos').select('nome'));
         const byKey = new Map();
-        for (const p of pecas) if (p.status !== 'vendida' && Number(p.quantidade) > 0 && !byKey.has(norm(p.nome))) byKey.set(norm(p.nome), p.nome);
+        for (const p of pecas) if (isStock(p) && Number(p.quantidade) > 0 && !byKey.has(norm(p.nome))) byKey.set(norm(p.nome), p.nome);
         for (const m of mapped) if (!byKey.has(m.nome)) byKey.set(m.nome, m.nome); // sold-out products go to stock 0
         const all = [...byKey.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
         const BATCH = 6;
