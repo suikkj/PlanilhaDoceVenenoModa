@@ -789,9 +789,28 @@ $('#sellForm').onsubmit = async e => {
 
 // ---------- Reservas ----------
 // A reservation is its own row (status 'reservada') holding q units taken from a stock row, like a partial sale.
-let reserving = null, resStock = null;
+let reserving = null, resStock = null, editingRes = null;
+// Edit mode: the reservation itself (discount, customer); color, size and quantity stay as reserved.
+const resMode = edit => {
+    for (const id of ['#rCor', '#rTam', '#rQtd']) $(id).closest('label').hidden = edit;
+    $('#rTitle').textContent = edit ? 'Editar reserva' : 'Reservar';
+    $('#rOk').textContent = edit ? 'Salvar' : 'Reservar';
+};
+function openResEdit(r) {
+    if (needsNet()) return;
+    editingRes = reserving = r; resStock = null;
+    $('#rNome').textContent = r.nome;
+    $('#rQtd').value = r.quantidade; $('#rDesc').value = Number(r.desconto) || 0;
+    $('#rCli').value = r.cliente_nome || ''; $('#rTel').value = r.cliente_telefone || ''; $('#resMsg').textContent = '';
+    $('#rCli').closest('label').hidden = $('#rTel').closest('label').hidden = !hasCol('cliente_nome');
+    resMode(true);
+    $('#rInfo').textContent = `${r.quantidade} ${r.quantidade === 1 ? 'unidade' : 'unidades'}${[r.cor, r.tamanho].filter(Boolean).length ? ` em ${[r.cor, r.tamanho].filter(Boolean).join(', ')}` : ''}.`;
+    $('#rTotal').textContent = money(resValue({ ...r, desconto: discount($('#rDesc')) }));
+    $('#resDialog').showModal();
+}
 function openReserve(p) {
     if (needsNet()) return;
+    editingRes = null; resMode(false);
     reserving = p; resStock = stockUnits(p);
     $('#rNome').textContent = p.nome;
     initVariant($('#resForm'), resStock);
@@ -802,6 +821,7 @@ function openReserve(p) {
     $('#resDialog').showModal();
 }
 function updateReserve() {
+    if (editingRes) { $('#rTotal').textContent = money(resValue({ ...editingRes, desconto: discount($('#rDesc')) })); return; }
     const v = syncVariant($('#resForm'), reserving, resStock), desc = [v.cor, v.tam].filter(Boolean).join(', ');
     $('#rInfo').textContent = `${v.max} ${v.max === 1 ? 'unidade' : 'unidades'}${desc ? ` em ${desc}` : ''} no estoque.`;
     $('#rTotal').textContent = money(unitPrice(reserving, discount($('#rDesc'))) * (parseInt($('#rQtd').value, 10) || 0));
@@ -813,6 +833,12 @@ $('#rCli').onchange = fillPhone($('#rCli'), $('#rTel'));
 $('#resForm').onsubmit = async e => {
     if (e.submitter?.value !== 'ok') return;
     e.preventDefault();
+    if (editingRes) {
+        const r = editingRes;
+        $('#resDialog').close();
+        return run(() => api('/pecas/' + r.id, { method: 'PUT', body: { desconto: discount($('#rDesc')),
+            ...(hasCol('cliente_nome') && { cliente_nome: $('#rCli').value.trim() || null, cliente_telefone: $('#rTel').value.trim() || null }) } }), 'Reserva atualizada.');
+    }
     const p = reserving, v = updateReserve(), q = parseInt($('#rQtd').value, 10) || 0;
     if (q < 1 || q > v.max) { $('#resMsg').textContent = v.max ? `Reserve de 1 a ${v.max} unidades nessa cor e tamanho.` : 'Não há unidades nessa cor e tamanho.'; return; }
     // desconto is kept on the reserved row (preco_venda stays the list price) and prefilled when it is sold
@@ -839,6 +865,7 @@ function renderReservas() {
         <td data-l="Cliente">${r.cliente_nome ? esc(r.cliente_nome) + (r.cliente_telefone ? `<span class="sub">${esc(r.cliente_telefone)}</span>` : '') : '–'}</td>
         <td class="row-actions">
           <button class="btn btn-primary btn-sm" data-res-sell="${r.id}">Vender</button>
+          <button class="btn-link" data-res-edit="${r.id}">Editar</button>
           <button class="btn-link" data-res-back="${r.id}">Retornar</button>
         </td></tr>`).join('');
     $('#resTable').hidden = !rows.length;
@@ -855,8 +882,9 @@ async function returnReserva(r) {
     await api('/pecas/' + r.id, { method: 'DELETE' });
 }
 $('#resTable tbody').onclick = async e => {
-    const t = e.target, r = pecas.find(p => p.id === +(t.dataset.resSell || t.dataset.resBack));
+    const t = e.target, r = pecas.find(p => p.id === +(t.dataset.resSell || t.dataset.resBack || t.dataset.resEdit));
     if (!r) return;
+    if (t.dataset.resEdit) return openResEdit(r);
     if (t.dataset.resSell) {
         openSell(r);
         // the customer who reserved is the buyer, unless changed

@@ -340,7 +340,7 @@
 <!-- Reservar -->
 <dialog id="resDialog">
   <form method="dialog" id="resForm">
-    <h2>Reservar <span id="rNome"></span></h2>
+    <h2><span id="rTitle">Reservar</span> <span id="rNome"></span></h2>
     <p class="hint" id="rInfo"></p>
     <div class="fields">
       <label>Cor <select id="rCor" class="v-cor"></select></label>
@@ -355,7 +355,7 @@
     <p class="form-msg" id="resMsg" role="alert"></p>
     <div class="actions">
       <button value="cancel" formnovalidate class="btn btn-ghost">Cancelar</button>
-      <button value="ok" class="btn btn-primary">Reservar</button>
+      <button value="ok" class="btn btn-primary" id="rOk">Reservar</button>
     </div>
   </form>
 </dialog>
