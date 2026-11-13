@@ -795,7 +795,7 @@ function openReserve(p) {
     reserving = p; resStock = stockUnits(p);
     $('#rNome').textContent = p.nome;
     initVariant($('#resForm'), resStock);
-    $('#rQtd').value = 1; $('#rCli').value = $('#rTel').value = ''; $('#resMsg').textContent = '';
+    $('#rQtd').value = 1; $('#rDesc').value = 0; $('#rCli').value = $('#rTel').value = ''; $('#resMsg').textContent = '';
     $('#rCli').closest('label').hidden = $('#rTel').closest('label').hidden = !hasCol('cliente_nome');
     $('#clienteList').innerHTML = uniq(sold().map(x => x.cliente_nome).filter(Boolean)).map(c => `<option value="${esc(c)}">`).join('');
     updateReserve();
@@ -804,16 +804,19 @@ function openReserve(p) {
 function updateReserve() {
     const v = syncVariant($('#resForm'), reserving, resStock), desc = [v.cor, v.tam].filter(Boolean).join(', ');
     $('#rInfo').textContent = `${v.max} ${v.max === 1 ? 'unidade' : 'unidades'}${desc ? ` em ${desc}` : ''} no estoque.`;
+    $('#rTotal').textContent = money(unitPrice(reserving, discount($('#rDesc'))) * (parseInt($('#rQtd').value, 10) || 0));
     return v;
 }
 $('#rCor').onchange = $('#rTam').onchange = updateReserve;
+$('#rQtd').oninput = $('#rDesc').oninput = updateReserve;
 $('#rCli').onchange = fillPhone($('#rCli'), $('#rTel'));
 $('#resForm').onsubmit = async e => {
     if (e.submitter?.value !== 'ok') return;
     e.preventDefault();
     const p = reserving, v = updateReserve(), q = parseInt($('#rQtd').value, 10) || 0;
     if (q < 1 || q > v.max) { $('#resMsg').textContent = v.max ? `Reserve de 1 a ${v.max} unidades nessa cor e tamanho.` : 'Não há unidades nessa cor e tamanho.'; return; }
-    const res = { status: 'reservada', reservada_em: today(), quantidade: q, cor: v.cor || null, tamanho: v.tam || null,
+    // desconto is kept on the reserved row (preco_venda stays the list price) and prefilled when it is sold
+    const res = { status: 'reservada', reservada_em: today(), quantidade: q, desconto: discount($('#rDesc')), cor: v.cor || null, tamanho: v.tam || null,
         ...(hasCol('cliente_nome') && { cliente_nome: $('#rCli').value.trim() || null, cliente_telefone: $('#rTel').value.trim() || null }) };
     $('#resDialog').close();
     await run(async () => {
@@ -824,6 +827,7 @@ $('#resForm').onsubmit = async e => {
         await api('/pecas/' + p.id, { method: 'PUT', body: { quantidade: p.quantidade - q, ...afterSale(resStock, v.cor, v.tam, q) } });
     }, `Reservado: ${p.nome}. A loja online atualiza em instantes.`);
 };
+const resValue = r => unitPrice(r, Number(r.desconto) || 0) * r.quantidade;
 function renderReservas() {
     const rows = reserved().sort((a, b) => String(b.reservada_em || '').localeCompare(String(a.reservada_em || '')));
     $('#resTable tbody').innerHTML = rows.map(r => `<tr>
@@ -831,6 +835,7 @@ function renderReservas() {
         <td><strong>${esc(r.nome)}</strong>${r.cor ? `<span class="sub">${esc(uniqJoin(r.cor))}</span>` : ''}</td>
         <td data-l="Tam.">${esc(uniqJoin(r.tamanho)) || '–'}</td>
         <td class="num" data-l="Qtd.">${r.quantidade}</td>
+        <td class="num" data-l="Valor">${money(resValue(r))}${Number(r.desconto) ? `<span class="sub">${+r.desconto}% off</span>` : ''}</td>
         <td data-l="Cliente">${r.cliente_nome ? esc(r.cliente_nome) + (r.cliente_telefone ? `<span class="sub">${esc(r.cliente_telefone)}</span>` : '') : '–'}</td>
         <td class="row-actions">
           <button class="btn btn-primary btn-sm" data-res-sell="${r.id}">Vender</button>
@@ -838,13 +843,14 @@ function renderReservas() {
         </td></tr>`).join('');
     $('#resTable').hidden = !rows.length;
     $('#resEmpty').hidden = rows.length > 0;
+    $('#resTotal').textContent = money(rows.reduce((s, r) => s + resValue(r), 0));
     $('#resBadge').hidden = !rows.length;
     $('#resBadge').textContent = rows.length;
 }
 // Back to stock: merged into the row it came from when that row is still in stock, otherwise the row itself goes back.
 async function returnReserva(r) {
     const origin = pecas.find(p => p.id === Number(r.reserva_origem) && p.status === 'estoque');
-    if (!origin) return api('/pecas/' + r.id, { method: 'PUT', body: { status: 'estoque', reservada_em: null, reserva_origem: null, cliente_nome: null, cliente_telefone: null } });
+    if (!origin) return api('/pecas/' + r.id, { method: 'PUT', body: { status: 'estoque', reservada_em: null, reserva_origem: null, desconto: null, cliente_nome: null, cliente_telefone: null } });
     await api('/pecas/' + origin.id, { method: 'PUT', body: { quantidade: origin.quantidade + r.quantidade, ...afterReturn(stockUnits(origin), r.cor || '', r.tamanho || '', r.quantidade) } });
     await api('/pecas/' + r.id, { method: 'DELETE' });
 }
@@ -854,6 +860,7 @@ $('#resTable tbody').onclick = async e => {
     if (t.dataset.resSell) {
         openSell(r);
         // the customer who reserved is the buyer, unless changed
+        $('#sDesc').value = Number(r.desconto) || 0; updateSell();
         if (r.cliente_nome && !$('#sCli').closest('label').hidden) { $('#sCli').value = r.cliente_nome; $('#sTel').value = r.cliente_telefone || ''; }
         return;
     }

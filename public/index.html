@@ -111,9 +111,10 @@
   <section id="view-reservas" class="view" hidden>
     <h2 class="view-title">Reservas</h2>
     <p class="hint">Peças separadas para uma cliente: saem do estoque e da loja online, mas ainda não contam como venda.</p>
+    <div class="band"><div class="figure"><span id="resTotal">R$ 0,00</span><small>em peças reservadas</small></div></div>
     <div class="table-wrap">
       <table class="grid" id="resTable">
-        <thead><tr><th>Reservada em</th><th>Peça</th><th>Tam.</th><th class="num">Qtd.</th><th>Cliente</th><th></th></tr></thead>
+        <thead><tr><th>Reservada em</th><th>Peça</th><th>Tam.</th><th class="num">Qtd.</th><th class="num">Valor</th><th>Cliente</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -345,9 +346,11 @@
       <label>Cor <select id="rCor" class="v-cor"></select></label>
       <label>Tamanho <select id="rTam" class="v-tam"></select></label>
       <label>Quantidade <input id="rQtd" class="v-qtd" type="number" min="1" value="1" required></label>
+      <label>Desconto (%) <input id="rDesc" type="number" min="0" max="100" value="0"></label>
       <label>Cliente (opcional) <input id="rCli" list="clienteList" autocomplete="off"></label>
       <label>Telefone (opcional) <input id="rTel" type="tel" inputmode="tel" autocomplete="off"></label>
     </div>
+    <p class="sell-total"><span id="rTotal">R$ 0,00</span></p>
     <p class="hint">Sai do estoque e da loja online agora, para ninguém comprar a mesma peça. Não conta como venda.</p>
     <p class="form-msg" id="resMsg" role="alert"></p>
     <div class="actions">
