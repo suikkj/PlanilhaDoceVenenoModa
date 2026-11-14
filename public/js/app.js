@@ -1031,8 +1031,8 @@ function renderSales() {
     $('#salesTable tbody').innerHTML = rows.map(p => {
         const l = saleProfit(p);
         return `<tr>
-          <td>${fmtDate(p.data_venda)}</td>
-          <td><strong>${esc(p.nome)}</strong>${saleSub(p) ? `<span class="sub">${esc(saleSub(p))}</span>` : ''}</td>
+          <td><div class="peca-cell">${resFotos(p).length ? `<button type="button" class="thumb-btn" data-sale-fotos="${p.id}" aria-label="Ver fotos de ${esc(p.nome)}"><img class="thumb" src="${esc(resFotos(p)[0].url)}" alt="" loading="lazy" onerror="this.parentElement.remove()"></button>` : ''}<span><strong>${esc(p.nome)}</strong>${saleSub(p) ? `<span class="sub">${esc(saleSub(p))}</span>` : ''}</span></div></td>
+          <td data-l="Data">${fmtDate(p.data_venda)}</td>
           <td data-l="Tam.">${esc(uniqJoin(p.tamanho)) || '–'}</td>
           <td class="num" data-l="Qtd.">${p.quantidade}</td>
           <td class="num" data-l="Desconto">${+p.desconto ? `${+(+p.desconto).toFixed(1)}%` : '–'}</td>
@@ -1103,6 +1103,8 @@ $('#exportBtn').onclick = () => {
 $('#monthSelect').onchange = e => { month = e.target.value; renderSales(); };
 $('#monthBars').onclick = e => { const b = e.target.closest('button'); if (b) { month = b.dataset.month; renderSales(); } };
 $('#salesTable tbody').onclick = async e => {
+    const fb = e.target.closest('[data-sale-fotos]');
+    if (fb) { const x = pecas.find(p => p.id === +fb.dataset.saleFotos); openViewer(resFotos(x).map(f => f.url), 0, x.nome); return; }
     const id = +e.target.dataset.undo;
     if (!id) return;
     const p = pecas.find(x => x.id === id);
