@@ -2,6 +2,7 @@
 // Pieces are matched by name + color + size. Anything that doesn't match is kept as a pending item for the admin.
 // Uses a store "aplicativo sob medida": NUVEMSHOP_TOKEN and NUVEMSHOP_STORE_ID come from the Vercel variables.
 const crypto = require('crypto');
+const { waitUntil } = require('@vercel/functions');
 const { stockUnits, available, afterSale, splitList, canonCor } = require('./public/js/variants.js');
 
 const API = 'https://api.nuvemshop.com.br/2025-03';
@@ -241,8 +242,11 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         if (!cfg) return;
         for (const nome of [...new Set(names.filter(Boolean).map(String))]) {
             try {
+                // The queue entry is removed only if no newer change re-queued the name while this sync ran
+                // (the trigger refreshes created_at); otherwise the scheduled run syncs it again.
+                const q = await supabase.from('nuvemshop_fila').select('created_at').eq('nome', nome).maybeSingle();
                 await syncName(nome);
-                await supabase.from('nuvemshop_fila').delete().eq('nome', nome); // done: the scheduled run can skip it
+                if (q.data) await supabase.from('nuvemshop_fila').delete().eq('nome', nome).eq('created_at', q.data.created_at);
             }
             catch (err) {
                 if (err.code === 'PGRST205' || err.code === '42P01') return; // integration tables not created yet
@@ -504,7 +508,12 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
         res.json(out);
     }));
 
-    return { afterChange };
+    // Used by the piece routes: the answer goes back at once and the store sync runs after it (waitUntil keeps
+    // the function alive). Syncs run one at a time, in order, so an older stock never overwrites a newer one.
+    let chain = Promise.resolve();
+    const afterChangeBg = names => { chain = chain.then(() => afterChange(names)).catch(err => console.error('sync nuvemshop', err)); waitUntil(chain); };
+
+    return { afterChange, afterChangeBg };
 };
 module.exports.matchingCombos = matchingCombos;
 module.exports.baseName = baseName;

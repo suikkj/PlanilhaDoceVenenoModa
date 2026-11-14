@@ -282,6 +282,7 @@ function setOffline(on, at) {
 }
 const needsNet = () => { if (offline) toast('Sem internet: vender e editar ficam bloqueados para não vender uma peça que já saiu.', true); return offline; };
 async function load() {
+    const gastosReq = api('/gastos').catch(() => gastos); // in parallel with the pieces; shortcut: offline shows the last list loaded, no local cache
     try {
         pecas = await api('/pecas');
         try { localStorage.setItem(STOCK_CACHE, JSON.stringify({ at: Date.now(), pecas })); } catch { /* full or blocked: the app still works online */ }
@@ -298,7 +299,7 @@ async function load() {
         p.preco_venda = Number(p.preco_venda) || 0;
         p.preco_comprado_unitario = Number(p.preco_comprado_unitario) || 0;
     }
-    gastos = await api('/gastos').catch(() => gastos); // shortcut: offline shows the last list loaded, no local cache
+    gastos = await gastosReq;
     renderStock();
     renderGastos();
     renderSales();

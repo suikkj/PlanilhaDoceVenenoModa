@@ -136,7 +136,7 @@ app.post('/api/pecas', auth, route(async (req, res) => {
         return res.status(400).json({ message: 'Nome, quantidade e preço de venda são obrigatórios.' });
     }
     const row = check(await supabase.from('pecas').insert([peca]).select('*'))[0];
-    await nuvem.afterChange([row.nome]);
+    nuvem.afterChangeBg([row.nome]);
     res.status(201).json(row);
 }));
 // Names of the given rows, read before a change so a rename or delete also updates the old Nuvemshop product.
@@ -150,12 +150,12 @@ app.patch('/api/pecas/batch', auth, route(async (req, res) => {
         const files = await fotoPathsOf(ids);
         check(await supabase.from('pecas').delete().in('id', ids));
         await removeFiles(files);
-        await nuvem.afterChange(names);
+        nuvem.afterChangeBg(names);
         return res.json({ message: 'Peças apagadas.' });
     }
     if (!updates) return res.status(400).json({ message: 'Nada para atualizar.' });
     check(await supabase.from('pecas').update(pick(updates)).in('id', ids));
-    await nuvem.afterChange([...names, updates.nome]);
+    nuvem.afterChangeBg([...names, updates.nome]);
     res.json({ message: 'Peças atualizadas.' });
 }));
 
@@ -163,7 +163,7 @@ app.put('/api/pecas/:id', auth, route(async (req, res) => {
     const before = await namesOf([req.params.id]);
     const rows = check(await supabase.from('pecas').update(pick(req.body)).eq('id', req.params.id).select('*'));
     if (!rows.length) return res.status(404).json({ message: 'Peça não encontrada.' });
-    await nuvem.afterChange([...before, rows[0].nome]);
+    nuvem.afterChangeBg([...before, rows[0].nome]);
     res.json(rows[0]);
 }));
 
@@ -172,7 +172,7 @@ app.delete('/api/pecas/:id', auth, route(async (req, res) => {
     const files = await fotoPathsOf([req.params.id]);
     check(await supabase.from('pecas').delete().eq('id', req.params.id));
     await removeFiles(files);
-    await nuvem.afterChange(before);
+    nuvem.afterChangeBg(before);
     res.json({ message: 'Peça apagada.' });
 }));
 
@@ -210,7 +210,7 @@ app.post('/api/pecas/:id/fotos', auth, express.raw({ type: 'image/*', limit: '8m
     const saved = check(await supabase.from('pecas').update({ fotos: [...fotos, { path, url }] }).eq('id', row.id).select('fotos'))[0];
     // The Nuvemshop and the page need to open the photo by its link.
     const open = await fetch(url, { method: 'HEAD' }).then(r => r.ok, () => false);
-    await nuvem.afterChange([row.nome]);
+    nuvem.afterChangeBg([row.nome]);
     res.status(201).json({ fotos: saved.fotos, kb: Math.round(webp.length / 1024),
         ...(!open && { aviso: `A foto foi salva, mas não abre pelo link. Marque o bucket "${BUCKET}" como público no Supabase (Storage → o bucket → Edit → Public).` }) });
 }));
@@ -222,7 +222,7 @@ app.post('/api/pecas/:id/fotos/remover', auth, route(async (req, res) => {
     if (!(row.fotos || []).some(f => f.path === path)) return res.status(404).json({ message: 'Foto não encontrada nesta peça.' });
     check(await supabase.from('pecas').update({ fotos: row.fotos.filter(f => f.path !== path) }).eq('id', row.id));
     await removeFiles([path]);
-    await nuvem.afterChange([row.nome]);
+    nuvem.afterChangeBg([row.nome]);
     res.json({ message: 'Foto removida.' });
 }));
 
