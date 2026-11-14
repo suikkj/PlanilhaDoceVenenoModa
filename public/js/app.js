@@ -953,6 +953,7 @@ function openBulk(list, ownDesc) {
         $('#bulkItems').append(el);
         const stock = stockUnits(p);
         initVariant(el, stock);
+        if (ownDesc) el.querySelector('.v-qtd').value = p.quantidade; // a reservation is sold whole unless changed
         return { p, stock, el, ...(ownDesc && { desc: Number(p.desconto) || 0 }) };
     });
     $('#bDesc').closest('label').hidden = !!ownDesc;
