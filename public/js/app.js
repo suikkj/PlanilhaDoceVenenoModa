@@ -743,14 +743,19 @@ function updateSell() {
 $('#sQtd').oninput = $('#sDesc').oninput = updateSell;
 
 // Optional sale fields (payment, customer) for the single and the bulk dialog.
+// Installments: only for credit card sales.
+const parcOf = pay => pay.closest('.fields').querySelector('.v-parc');
+const syncParc = pay => { parcOf(pay).closest('label').hidden = pay.value !== 'credito'; };
 function prepareSaleFields(pay, cli, tel) {
     pay.value = ''; cli.value = tel.value = '';
+    parcOf(pay).value = 1; syncParc(pay); pay.onchange = () => syncParc(pay);
     pay.closest('label').hidden = !hasCol('forma_pagamento');
     cli.closest('label').hidden = tel.closest('label').hidden = !hasCol('cliente_nome');
     $('#clienteList').innerHTML = uniq(sold().map(x => x.cliente_nome).filter(Boolean)).map(c => `<option value="${esc(c)}">`).join('');
 }
 const saleFields = (pay, cli, tel) => ({
     ...(hasCol('forma_pagamento') && { forma_pagamento: pay.value || null }),
+    ...(hasCol('parcelas') && { parcelas: pay.value === 'credito' ? +parcOf(pay).value : null }),
     ...(hasCol('cliente_nome') && { cliente_nome: cli.value.trim() || null, cliente_telefone: tel.value.trim() || null }),
 });
 // Registers the sale of q units of one color/size of piece p.
@@ -1050,7 +1055,7 @@ function renderSales() {
 }
 
 const PAY = { pix: 'Pix', credito: 'Cartão de crédito', debito: 'Cartão de débito', dinheiro: 'Dinheiro', nuvemshop: 'Nuvemshop' };
-const saleSub = p => [uniqJoin(p.cor), p.cliente_nome && `para ${p.cliente_nome}`, PAY[p.forma_pagamento]].filter(Boolean).join(', ');
+const saleSub = p => [uniqJoin(p.cor), p.cliente_nome && `para ${p.cliente_nome}`, PAY[p.forma_pagamento] && PAY[p.forma_pagamento] + (p.parcelas > 1 ? ` ${p.parcelas}x` : '')].filter(Boolean).join(', ');
 let salesRows = [];
 
 // Rankings for the selected period. Each list only appears when it has data.
@@ -1112,7 +1117,7 @@ $('#salesTable tbody').onclick = async e => {
     const d = Number(p.desconto) || 0;
     const preco = d > 0 && d < 100 ? +(p.preco_venda / (1 - d / 100)).toFixed(2) : p.preco_venda; // restore list price
     const body = { status: 'estoque', data_venda: null, desconto: null, lucro: null, preco_venda: preco };
-    for (const k of ['forma_pagamento', 'cliente_nome', 'cliente_telefone']) if (hasCol(k)) body[k] = null;
+    for (const k of ['forma_pagamento', 'parcelas', 'cliente_nome', 'cliente_telefone']) if (hasCol(k)) body[k] = null;
     await run(() => api('/pecas/' + id, { method: 'PUT', body }), 'Peça devolvida ao estoque.');
 };
 

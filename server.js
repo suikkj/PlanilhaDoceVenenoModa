@@ -42,7 +42,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const PECA_FIELDS = ['nome', 'quantidade', 'preco_comprado_unitario', 'preco_venda', 'cor', 'tamanho',
     'data_compra', 'status', 'data_venda', 'desconto', 'lucro',
     'forma_pagamento', 'cliente_nome', 'cliente_telefone', 'fornecedor', 'descricao', 'medidas', 'promo_pct', 'promo_inicio', 'promo_fim',
-    'reserva_origem', 'reservada_em'];
+    'reserva_origem', 'reservada_em', 'parcelas'];
 const pick = (obj = {}) => Object.fromEntries(Object.entries(obj).filter(([k]) => PECA_FIELDS.includes(k)));
 const isAdmin = email => adminEmails.includes(String(email).toLowerCase());
 
