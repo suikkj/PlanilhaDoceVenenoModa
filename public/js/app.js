@@ -860,12 +860,25 @@ const resValue = r => unitPrice(r, Number(r.desconto) || 0) * r.quantidade;
 // A partial reservation is a new row without photos: it shows the photos of a piece with the same name.
 const resFotos = r => r.fotos?.length ? r.fotos : pecas.find(p => p.nome === r.nome && p.fotos?.length)?.fotos || [];
 $('#resSearch').oninput = () => renderReservas();
+const resSelected = new Set();
+$('#resBulkSell').onclick = () => {
+    const list = reserved().filter(r => resSelected.has(r.id));
+    openBulk(list, true);
+    // same customer on every selected reservation: already filled in
+    const cli = uniq(list.map(r => r.cliente_nome || ''));
+    if (cli.length === 1 && cli[0] && !$('#bCli').closest('label').hidden) { $('#bCli').value = cli[0]; $('#bTel').value = list[0].cliente_telefone || ''; }
+};
+function renderResBulk() {
+    $('#resBulkBar').hidden = !resSelected.size;
+    $('#resBulkCount').textContent = `${resSelected.size} selecionada${resSelected.size > 1 ? 's' : ''}`;
+}
 function renderReservas() {
     const q = $('#resSearch').value.trim().toLowerCase(), all = reserved();
+    for (const id of resSelected) if (!all.some(r => r.id === id)) resSelected.delete(id);
     const rows = all.filter(r => !q || `${r.nome} ${r.cor || ''} ${r.cliente_nome || ''}`.toLowerCase().includes(q))
         .sort((a, b) => String(b.reservada_em || '').localeCompare(String(a.reservada_em || '')));
     $('#resTable tbody').innerHTML = rows.map(r => `<tr>
-        <td><div class="peca-cell">${resFotos(r).length ? `<button type="button" class="thumb-btn" data-res-fotos="${r.id}" aria-label="Ver fotos de ${esc(r.nome)}"><img class="thumb" src="${esc(resFotos(r)[0].url)}" alt="" loading="lazy" onerror="this.parentElement.remove()"></button>` : ''}<span><strong>${esc(r.nome)}</strong>${r.cor ? `<span class="sub">${esc(uniqJoin(r.cor))}</span>` : ''}</span></div></td>
+        <td><div class="peca-cell"><input type="checkbox" data-res-id="${r.id}" ${resSelected.has(r.id) ? 'checked' : ''} aria-label="Selecionar ${esc(r.nome)}">${resFotos(r).length ? `<button type="button" class="thumb-btn" data-res-fotos="${r.id}" aria-label="Ver fotos de ${esc(r.nome)}"><img class="thumb" src="${esc(resFotos(r)[0].url)}" alt="" loading="lazy" onerror="this.parentElement.remove()"></button>` : ''}<span><strong>${esc(r.nome)}</strong>${r.cor ? `<span class="sub">${esc(uniqJoin(r.cor))}</span>` : ''}</span></div></td>
         <td data-l="Reservada em">${fmtDate(r.reservada_em)}</td>
         <td data-l="Tam.">${esc(uniqJoin(r.tamanho)) || '–'}</td>
         <td class="num" data-l="Qtd.">${r.quantidade}</td>
@@ -881,6 +894,7 @@ function renderReservas() {
     $('#resEmpty').textContent = all.length ? 'Nenhuma reserva bate com essa busca.' : 'Nenhuma peça reservada. Use "Reservar" no Estoque.';
     $('#resSearch').hidden = !all.length;
     $('#resTotal').textContent = money(rows.reduce((s, r) => s + resValue(r), 0));
+    renderResBulk();
     $('#resBadge').hidden = !all.length;
     $('#resBadge').textContent = all.length;
 }
@@ -892,6 +906,7 @@ async function returnReserva(r) {
     await api('/pecas/' + r.id, { method: 'DELETE' });
 }
 $('#resTable tbody').onclick = async e => {
+    if (e.target.dataset.resId) { e.target.checked ? resSelected.add(+e.target.dataset.resId) : resSelected.delete(+e.target.dataset.resId); renderResBulk(); return; }
     const fb = e.target.closest('[data-res-fotos]');
     if (fb) { const x = pecas.find(p => p.id === +fb.dataset.resFotos); openViewer(resFotos(x).map(f => f.url), 0, x.nome); return; }
     const t = e.target, r = pecas.find(p => p.id === +(t.dataset.resSell || t.dataset.resBack || t.dataset.resEdit));
@@ -915,16 +930,17 @@ function updateBulk() {
     const desc = discount($('#bDesc'));
     let total = 0, lucro = 0;
     for (const it of bulkItems) {
-        const v = syncVariant(it.el, it.p, it.stock), unit = unitPrice(it.p, desc);
+        const v = syncVariant(it.el, it.p, it.stock), unit = unitPrice(it.p, it.desc ?? desc);
         it.el.querySelector('.bulk-left').textContent = `${v.max} ${v.max === 1 ? 'disponível' : 'disponíveis'}, ${money(unit)} cada`;
         total += unit * v.q; lucro += (unit - it.p.preco_comprado_unitario) * v.q;
     }
     $('#bTotal').textContent = money(total);
     $('#bLucro').textContent = `lucro ${money(lucro)}`;
 }
-$('#bulkSell').onclick = () => {
+$('#bulkSell').onclick = () => openBulk(pecas.filter(p => selected.has(p.id)));
+// ownDesc: each piece keeps its own discount (reservations) instead of the shared field.
+function openBulk(list, ownDesc) {
     if (needsNet()) return;
-    const list = pecas.filter(p => selected.has(p.id));
     $('#bTitle').textContent = `Vender ${list.length} ${list.length === 1 ? 'peça' : 'peças'}`;
     $('#bulkItems').innerHTML = '';
     bulkItems = list.map(p => {
@@ -937,15 +953,16 @@ $('#bulkSell').onclick = () => {
         $('#bulkItems').append(el);
         const stock = stockUnits(p);
         initVariant(el, stock);
-        return { p, stock, el };
+        return { p, stock, el, ...(ownDesc && { desc: Number(p.desconto) || 0 }) };
     });
+    $('#bDesc').closest('label').hidden = !!ownDesc;
     $('#bDesc').value = 0;
     $('#bData').value = today();
     prepareSaleFields($('#bPay'), $('#bCli'), $('#bTel'));
     $('#bulkMsg').textContent = '';
     updateBulk();
     $('#bulkDialog').showModal();
-};
+}
 $('#bulkItems').onchange = $('#bulkItems').oninput = $('#bDesc').oninput = updateBulk;
 $('#bCli').onchange = fillPhone($('#bCli'), $('#bTel'));
 $('#bulkForm').onsubmit = async e => {
@@ -957,10 +974,10 @@ $('#bulkForm').onsubmit = async e => {
     if (bad) { $('#bulkMsg').textContent = `${bad.p.nome}: venda de 1 a ${bad.max} unidades nessa cor e tamanho.`; return; }
     if (!data_venda) { $('#bulkMsg').textContent = 'Informe a data da venda.'; return; }
     $('#bulkDialog').close();
-    selected.clear();
+    selected.clear(); resSelected.clear();
     const extra = saleFields($('#bPay'), $('#bCli'), $('#bTel'));
     // One after another, so a failure stops the batch at a clear point instead of leaving half-written pieces.
-    await run(async () => { for (const s of sales) await registerSale(s.p, s.stock, s.cor, s.tam, s.q, desc, data_venda, extra); },
+    await run(async () => { for (const s of sales) await registerSale(s.p, s.stock, s.cor, s.tam, s.q, s.desc ?? desc, data_venda, extra); },
         `${sales.length} ${sales.length === 1 ? 'venda registrada' : 'vendas registradas'}.`);
 };
 $('#bulkDelete').onclick = async () => {
