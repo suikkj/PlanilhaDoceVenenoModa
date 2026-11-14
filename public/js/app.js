@@ -177,6 +177,8 @@ const hojeSP = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America
 const fmtDia = d => d.split('-').reverse().join('/');
 const promoStatus = e => !e.pct ? '' : e.ini && e.ini > hojeSP() ? 'agendada' : e.fim && e.fim < hojeSP() ? 'encerrada' : 'ativa';
 const promoPeriodo = e => e.ini && e.fim ? `${fmtDia(e.ini)} a ${fmtDia(e.fim)}` : e.ini ? `a partir de ${fmtDia(e.ini)}` : e.fim ? `até ${fmtDia(e.fim)}` : 'sem prazo';
+// Percent off of a piece whose promotion is running today (dates inclusive; empty = open). Same rule as the server.
+const promoPct = p => { const d = today(), pct = Number(p.promo_pct) || 0; return pct > 0 && pct < 100 && (!p.promo_inicio || p.promo_inicio <= d) && (!p.promo_fim || p.promo_fim >= d) ? pct : 0; };
 const promoPrice = e => Math.round(e.price * (1 - e.pct / 100) * 100) / 100;
 function promoGroups() {
     const q = normTxt($('#pBusca').value || '');
@@ -350,7 +352,7 @@ function renderStock() {
           <td data-l="Tam.">${esc(uniqJoin(p.tamanho)) || '–'}</td>
           <td class="num" data-l="Qtd."><span>${p.quantidade}${low ? '<span class="tag">baixo</span>' : ''}</span></td>
           <td class="num" data-l="Compra">${money(p.preco_comprado_unitario)}</td>
-          <td class="num" data-l="Venda">${money(p.preco_venda)}</td>
+          <td class="num" data-l="Venda">${promoPct(p) ? `<span>${money(unitPrice(p, promoPct(p)))}<span class="sub"><s>${money(p.preco_venda)}</s> ${promoPct(p)}% off</span></span>` : money(p.preco_venda)}</td>
           <td data-l="Lucro un." class="num ${lucro < 0 ? 'neg' : ''}">${money(lucro)}</td>
           <td data-l="Comprada em"><span>${fmtDate(p.data_compra)}${isStale(p) ? '<span class="tag">parada</span>' : ''}</span></td>
           <td class="row-actions">
@@ -769,7 +771,7 @@ function openSell(p) {
     sellStock = stockUnits(p);
     initVariant($('#sellForm'), sellStock);
     $('#sQtd').value = 1;
-    $('#sDesc').value = 0;
+    $('#sDesc').value = promoPct(p); // running promotion: already applied, can be changed
     $('#sData').value = today();
     prepareSaleFields($('#sPay'), $('#sCli'), $('#sTel'));
     $('#sellMsg').textContent = '';
@@ -815,7 +817,7 @@ function openReserve(p) {
     reserving = p; resStock = stockUnits(p);
     $('#rNome').textContent = p.nome;
     initVariant($('#resForm'), resStock);
-    $('#rQtd').value = 1; $('#rDesc').value = 0; $('#rCli').value = $('#rTel').value = ''; $('#resMsg').textContent = '';
+    $('#rQtd').value = 1; $('#rDesc').value = promoPct(p); $('#rCli').value = $('#rTel').value = ''; $('#resMsg').textContent = '';
     $('#rCli').closest('label').hidden = $('#rTel').closest('label').hidden = !hasCol('cliente_nome');
     $('#clienteList').innerHTML = uniq(sold().map(x => x.cliente_nome).filter(Boolean)).map(c => `<option value="${esc(c)}">`).join('');
     updateReserve();
@@ -855,11 +857,16 @@ $('#resForm').onsubmit = async e => {
     }, `Reservado: ${p.nome}. A loja online atualiza em instantes.`);
 };
 const resValue = r => unitPrice(r, Number(r.desconto) || 0) * r.quantidade;
+// A partial reservation is a new row without photos: it shows the photos of a piece with the same name.
+const resFotos = r => r.fotos?.length ? r.fotos : pecas.find(p => p.nome === r.nome && p.fotos?.length)?.fotos || [];
+$('#resSearch').oninput = () => renderReservas();
 function renderReservas() {
-    const rows = reserved().sort((a, b) => String(b.reservada_em || '').localeCompare(String(a.reservada_em || '')));
+    const q = $('#resSearch').value.trim().toLowerCase(), all = reserved();
+    const rows = all.filter(r => !q || `${r.nome} ${r.cor || ''} ${r.cliente_nome || ''}`.toLowerCase().includes(q))
+        .sort((a, b) => String(b.reservada_em || '').localeCompare(String(a.reservada_em || '')));
     $('#resTable tbody').innerHTML = rows.map(r => `<tr>
+        <td><div class="peca-cell">${resFotos(r).length ? `<button type="button" class="thumb-btn" data-res-fotos="${r.id}" aria-label="Ver fotos de ${esc(r.nome)}"><img class="thumb" src="${esc(resFotos(r)[0].url)}" alt="" loading="lazy" onerror="this.parentElement.remove()"></button>` : ''}<span><strong>${esc(r.nome)}</strong>${r.cor ? `<span class="sub">${esc(uniqJoin(r.cor))}</span>` : ''}</span></div></td>
         <td data-l="Reservada em">${fmtDate(r.reservada_em)}</td>
-        <td><strong>${esc(r.nome)}</strong>${r.cor ? `<span class="sub">${esc(uniqJoin(r.cor))}</span>` : ''}</td>
         <td data-l="Tam.">${esc(uniqJoin(r.tamanho)) || '–'}</td>
         <td class="num" data-l="Qtd.">${r.quantidade}</td>
         <td class="num" data-l="Valor">${money(resValue(r))}${Number(r.desconto) ? `<span class="sub">${+r.desconto}% off</span>` : ''}</td>
@@ -871,9 +878,11 @@ function renderReservas() {
         </td></tr>`).join('');
     $('#resTable').hidden = !rows.length;
     $('#resEmpty').hidden = rows.length > 0;
+    $('#resEmpty').textContent = all.length ? 'Nenhuma reserva bate com essa busca.' : 'Nenhuma peça reservada. Use "Reservar" no Estoque.';
+    $('#resSearch').hidden = !all.length;
     $('#resTotal').textContent = money(rows.reduce((s, r) => s + resValue(r), 0));
-    $('#resBadge').hidden = !rows.length;
-    $('#resBadge').textContent = rows.length;
+    $('#resBadge').hidden = !all.length;
+    $('#resBadge').textContent = all.length;
 }
 // Back to stock: merged into the row it came from when that row is still in stock, otherwise the row itself goes back.
 async function returnReserva(r) {
@@ -883,6 +892,8 @@ async function returnReserva(r) {
     await api('/pecas/' + r.id, { method: 'DELETE' });
 }
 $('#resTable tbody').onclick = async e => {
+    const fb = e.target.closest('[data-res-fotos]');
+    if (fb) { const x = pecas.find(p => p.id === +fb.dataset.resFotos); openViewer(resFotos(x).map(f => f.url), 0, x.nome); return; }
     const t = e.target, r = pecas.find(p => p.id === +(t.dataset.resSell || t.dataset.resBack || t.dataset.resEdit));
     if (!r) return;
     if (t.dataset.resEdit) return openResEdit(r);

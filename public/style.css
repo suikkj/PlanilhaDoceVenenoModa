@@ -163,6 +163,9 @@ button:disabled { opacity: .6; cursor: wait; }
     .grid td[data-l]::before { content: attr(data-l); color: var(--muted); }
     .grid .num { text-align: left; }
     .grid .row-actions { grid-column: 1 / -1; text-align: left; margin-top: .4rem; }
+    #resTable tr { grid-template-columns: minmax(0,1fr); }
+    #resTable td[data-l] { grid-column: 1; }
+    #resTable td:first-child { margin-bottom: .3rem; }
     #salesTable td:first-child { grid-column: 1 / -1; font-size: .85rem; color: var(--muted); }
     .band > .btn-copper, .band-actions { margin-left: 0; width: 100%; }
     .band-actions .btn { flex: 1 1 auto; }
