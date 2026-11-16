@@ -216,7 +216,7 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
                 await ns(`/products/${productId}/variants/${keep.id}`, { method: 'PUT', body: { values } }).catch(() => {}); // cosmetic: a failed rename keeps the old label
             }
             // Sold-out combinations keep their variant (and photos) with stock 0.
-            updates.push({ id: keep.id, stock: w ? w.stock : 0, ...(w && { price: money2(w.price), promotional_price: promoOf(w) }) });
+            updates.push({ id: keep.id, stock: w ? w.stock : 0, ...(w && { price: money2(w.price), promotional_price: promoOf(w) ?? '0' }) }); // the API ignores null: "0" is what removes an ended promotion
         }
         for (const [k, w] of want) {
             if (seen.has(k)) continue;
@@ -229,12 +229,6 @@ module.exports = function nuvemshop(app, { supabase, check, route, auth, adminOn
             updates.push({ id: nv.id, stock: w.stock });
         }
         if (updates.length) await ns(`/products/${productId}/variants`, { method: 'PATCH', body: updates });
-        // The bulk PATCH ignores promotional_price: null, so an ended promotion is cleared variant by variant.
-        for (const u of updates) {
-            const cur = (product.variants || []).find(v => v.id === u.id);
-            if (u.promotional_price === null && cur && Number(cur.promotional_price) > 0)
-                await ns(`/products/${productId}/variants/${u.id}`, { method: 'PUT', body: { promotional_price: null } });
-        }
         await syncImages(key, productId, fotos);
         // Hidden product that now has a photo and a description here: goes live. Never hides one that is visible.
         if (!product.published && pronto(fotos)) await ns(`/products/${productId}`, { method: 'PUT', body: { published: true } });
