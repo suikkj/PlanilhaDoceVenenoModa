@@ -197,11 +197,11 @@ function renderPromo() {
     $('#promoTable tbody').innerHTML = promoRows.map((e, i) => {
         const st = promoStatus(e), on = st === 'ativa';
         return `<tr>
-        <td>${esc(e.nome)}</td><td class="num">${e.qtd}</td>
-        <td class="num">${on ? `<span class="promo-old">${fmtBRL(e.price)}</span>${fmtBRL(promoPrice(e))}` : fmtBRL(e.price)}</td>
-        <td class="num">${e.pct ? `<span class="promo-tag${on ? '' : ' promo-off'}">${e.pct.toLocaleString('pt-BR')}% off</span>` : '—'}</td>
-        <td>${e.pct ? promoPeriodo(e) + (st === 'agendada' ? ' · começa depois' : st === 'encerrada' ? ' · encerrada' : '') : '—'}</td>
-        <td><button type="button" class="btn ${e.pct ? 'btn-ghost' : 'btn-copper'}" data-promo-i="${i}">${e.pct ? 'Editar' : 'Criar promoção'}</button></td></tr>`;
+        <td><strong>${esc(e.nome)}</strong></td><td class="num" data-l="Em estoque">${e.qtd}</td>
+        <td class="num" data-l="Preço">${on ? `<span class="promo-old">${fmtBRL(e.price)}</span>${fmtBRL(promoPrice(e))}` : fmtBRL(e.price)}</td>
+        <td class="num" data-l="Promoção">${e.pct ? `<span class="promo-tag${on ? '' : ' promo-off'}">${e.pct.toLocaleString('pt-BR')}% off</span>` : '—'}</td>
+        <td data-l="Período">${e.pct ? promoPeriodo(e) + (st === 'agendada' ? ' · começa depois' : st === 'encerrada' ? ' · encerrada' : '') : '—'}</td>
+        <td class="row-actions"><button type="button" class="btn ${e.pct ? 'btn-ghost' : 'btn-copper'}" data-promo-i="${i}">${e.pct ? 'Editar' : 'Criar promoção'}</button></td></tr>`;
     }).join('');
     $('#promoEmpty').hidden = promoRows.length > 0;
 }
