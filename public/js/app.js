@@ -201,7 +201,7 @@ function renderPromo() {
     $('#promoTable tbody').innerHTML = promoRows.map((e, i) => {
         const st = promoStatus(e), on = st === 'ativa';
         return `<tr>
-        <td><strong>${esc(e.nome)}</strong></td><td class="num" data-l="Em estoque">${e.qtd}</td>
+        <td><div class="peca-cell">${resFotos(e).length ? `<button type="button" class="thumb-btn" data-promo-fotos="${i}" aria-label="Ver fotos de ${esc(e.nome)}"><img class="thumb" src="${esc(resFotos(e)[0].url)}" alt="" loading="lazy" onerror="this.parentElement.remove()"></button>` : ''}<strong>${esc(e.nome)}</strong></div></td><td class="num" data-l="Em estoque">${e.qtd}</td>
         <td class="num" data-l="Preço">${on ? `<span class="promo-old">${fmtBRL(e.price)}</span>${fmtBRL(promoPrice(e))}` : fmtBRL(e.price)}</td>
         <td class="num" data-l="Promoção">${e.pct ? `<span class="promo-tag${on ? '' : ' promo-off'}">${e.pct.toLocaleString('pt-BR')}% off</span>` : '—'}</td>
         <td data-l="Período">${e.pct ? promoPeriodo(e) + (st === 'agendada' ? ' · começa depois' : st === 'encerrada' ? ' · encerrada' : '') : '—'}</td>
@@ -222,6 +222,8 @@ function promoCalc() {
     return pct;
 }
 $('#promoTable').onclick = e => {
+    const fb = e.target.closest('[data-promo-fotos]');
+    if (fb) { const g = promoRows[+fb.dataset.promoFotos]; openViewer(resFotos(g).map(f => f.url), 0, g.nome); return; }
     const i = e.target.closest('[data-promo-i]')?.dataset.promoI; if (i == null) return;
     promoEdit = promoRows[Number(i)];
     $('#prNome').textContent = promoEdit.nome;
