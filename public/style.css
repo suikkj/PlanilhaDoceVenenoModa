@@ -171,7 +171,10 @@ button:disabled { opacity: .6; cursor: wait; }
     .topbar { flex-wrap: wrap; gap: .3rem 1rem; padding: .4rem 1rem; }
     .topbar-logo { height: 40px; }
     .theme-btn { margin-left: auto; }
-    .tabs { order: 3; flex-basis: 100%; overflow-x: auto; }
+    .tabs { order: 3; flex-basis: 100%; display: none; flex-direction: column; padding: .3rem 0 .6rem; }
+    .tabs.open { display: flex; }
+    .tabs a[aria-current] { box-shadow: inset 3px 0 0 var(--copper); }
+    .menu-btn { display: inline-flex; order: -1; }
 }
 
 /* ---------- Month bars ---------- */
@@ -400,7 +403,6 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     .sell-total { font-size: 2rem; overflow-wrap: anywhere; }
     .band { gap: 1rem 2rem; }
     .figure span { overflow-wrap: anywhere; }
-    .tabs { flex-wrap: nowrap; }
     .auth-links { flex-direction: column; align-items: flex-start; }
     .toolbar select { flex: 1 1 12rem; }
 }
@@ -439,3 +441,14 @@ textarea { resize: vertical; min-height: 5rem; }
 .link-copy-ico{flex:none;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;margin-left:4px;border:1px solid var(--border,#ddd);border-radius:8px;background:transparent;color:inherit;cursor:pointer;padding:0}
 .link-copy-ico:hover{background:rgba(0,0,0,.05)}
 .link-copy-ico.done{background:#2e7d32;border-color:#2e7d32;color:#fff}
+
+/* Phone menu button (three lines); hidden on wider screens */
+.menu-btn { display: none; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer; }
+.menu-btn span, .menu-btn span::before, .menu-btn span::after { display: block; width: 22px; height: 2px; background: #fff; border-radius: 2px; position: relative; content: ""; }
+.menu-btn span::before { position: absolute; top: -7px; }
+.menu-btn span::after { position: absolute; top: 7px; }
+.menu-btn[aria-expanded="true"] span { background: transparent; }
+.menu-btn[aria-expanded="true"] span::before { top: 0; transform: rotate(45deg); }
+.menu-btn[aria-expanded="true"] span::after { top: 0; transform: rotate(-45deg); }
+.menu-btn:focus-visible { outline: 2px solid var(--copper); outline-offset: 2px; }
+@media (max-width: 720px) { .menu-btn { display: inline-flex; } }

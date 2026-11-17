@@ -48,7 +48,8 @@
 <div id="appView" hidden>
   <header class="topbar">
     <img src="imagens/Logo Site 3.png" alt="Doce Veneno" class="topbar-logo">
-    <nav class="tabs" aria-label="Seções">
+    <button type="button" class="menu-btn" id="menuBtn" aria-label="Abrir menu" aria-expanded="false" aria-controls="tabsNav"><span></span></button>
+    <nav class="tabs" id="tabsNav" aria-label="Seções">
       <a href="#estoque" data-tab="estoque">Estoque</a>
       <a href="#reservas" data-tab="reservas">Reservas <span id="resBadge" class="badge" hidden></span></a>
       <a href="#vendas" data-tab="vendas">Vendas</a>
@@ -395,6 +396,7 @@
       <label class="wide">Preço com desconto (R$) <input id="prPreco" inputmode="decimal" autocomplete="off" required placeholder="Ex.: 99,90"></label>
       <label>Começa em <input id="prInicio" type="date"></label>
       <label>Termina em <input id="prFim" type="date"></label>
+      <label class="check"><input type="checkbox" id="prSempre"> Sem data de término</label>
     </div>
     <p class="sell-total"><span id="prPct">—</span> <small id="prInfo">Digite o novo preço.</small></p>
     <p class="hint">Sem datas, a promoção começa agora e fica até você tirar.</p>

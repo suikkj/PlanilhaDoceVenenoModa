@@ -153,6 +153,10 @@ function showTab() {
     document.querySelectorAll('.view').forEach(v => v.hidden = v.id !== 'view-' + tab);
     document.querySelectorAll('.tabs a').forEach(a => a.toggleAttribute('aria-current', a.dataset.tab === tab));
 }
+// Phone menu: the tabs open as a list under the bar; choosing one closes it.
+const setMenu = open => { $('#tabsNav').classList.toggle('open', open); $('#menuBtn').setAttribute('aria-expanded', open); };
+$('#menuBtn').onclick = () => setMenu(!$('#tabsNav').classList.contains('open'));
+$('#tabsNav').addEventListener('click', e => { if (e.target.closest('a')) setMenu(false); });
 window.addEventListener('hashchange', () => { showTab(); if (location.hash === '#links' && !linksData) loadLinks(); });
 
 // ---------- Desconto ----------
@@ -176,7 +180,7 @@ const normTxt = v => String(v).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerC
 const hojeSP = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
 const fmtDia = d => d.split('-').reverse().join('/');
 const promoStatus = e => !e.pct ? '' : e.ini && e.ini > hojeSP() ? 'agendada' : e.fim && e.fim < hojeSP() ? 'encerrada' : 'ativa';
-const promoPeriodo = e => e.ini && e.fim ? `${fmtDia(e.ini)} a ${fmtDia(e.fim)}` : e.ini ? `a partir de ${fmtDia(e.ini)}` : e.fim ? `até ${fmtDia(e.fim)}` : 'sem prazo';
+const promoPeriodo = e => e.ini && e.fim ? `${fmtDia(e.ini)} a ${fmtDia(e.fim)}` : e.ini ? `a partir de ${fmtDia(e.ini)}` : e.fim ? `até ${fmtDia(e.fim)}` : 'sem data de término';
 // Percent off of a piece whose promotion is running today (dates inclusive; empty = open). Same rule as the server.
 const promoPct = p => { const d = today(), pct = Number(p.promo_pct) || 0; return pct > 0 && pct < 100 && (!p.promo_inicio || p.promo_inicio <= d) && (!p.promo_fim || p.promo_fim >= d) ? pct : 0; };
 const promoPrice = e => Math.round(e.price * (1 - e.pct / 100) * 100) / 100;
@@ -206,6 +210,7 @@ function renderPromo() {
     $('#promoEmpty').hidden = promoRows.length > 0;
 }
 $('#pBusca').oninput = renderPromo;
+$('#prSempre').onchange = () => { $('#prFim').disabled = $('#prSempre').checked; if ($('#prSempre').checked) $('#prFim').value = ''; };
 let promoEdit = null;
 function promoCalc() {
     const n = parseBRL($('#prPreco').value), a = promoEdit.price;
@@ -224,6 +229,7 @@ $('#promoTable').onclick = e => {
     $('#prPreco').value = promoEdit.pct ? promoPrice(promoEdit).toFixed(2).replace('.', ',') : '';
     $('#prInicio').value = promoEdit.ini || '';
     $('#prFim').value = promoEdit.fim || '';
+    $('#prSempre').checked = !!promoEdit.pct && !promoEdit.fim; $('#prFim').disabled = $('#prSempre').checked;
     $('#prRemover').hidden = !promoEdit.pct;
     $('#promoMsg').textContent = '';
     promoCalc();
@@ -238,7 +244,7 @@ $('#promoForm').onsubmit = async e => {
     if (needsNet()) return;
     let updates = { promo_pct: null, promo_inicio: null, promo_fim: null };
     if (act === 'ok') {
-        const pct = promoCalc(), ini = $('#prInicio').value || null, fim = $('#prFim').value || null;
+        const pct = promoCalc(), ini = $('#prInicio').value || null, fim = $('#prSempre').checked ? null : $('#prFim').value || null;
         if (pct == null) return $('#promoMsg').textContent = $('#prInfo').textContent;
         if (ini && fim && fim < ini) return $('#promoMsg').textContent = 'A data final precisa ser igual ou depois da data de início.';
         if (fim && fim < hojeSP()) return $('#promoMsg').textContent = 'A data final já passou.';
